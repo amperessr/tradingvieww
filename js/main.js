@@ -1,7 +1,7 @@
 import {
   createChart, CandlestickSeries, BarSeries, LineSeries, AreaSeries, HistogramSeries,
   ColorType, CrosshairMode, LineStyle, PriceScaleMode,
-} from '../node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.mjs';
+} from '../lib/lightweight-charts.standalone.production.mjs';
 import { Datafeed, INTERVALS, FAVORITE_INTERVALS, intervalSec, SYMBOLS, symbolMeta, displaySymbol, EXCHANGE, TZ_OFFSET } from './datafeed.js';
 import { Broker, sideText, typeText } from './broker.js';
 import { IndicatorManager, INDICATORS } from './indicators.js';

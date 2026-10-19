@@ -1,5 +1,5 @@
 // 技術指標：計算 + 在圖表上建立對應的 series
-import { LineSeries, HistogramSeries, LineStyle } from '../node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.mjs';
+import { LineSeries, HistogramSeries, LineStyle } from '../lib/lightweight-charts.standalone.production.mjs';
 
 function sma(values, n) {
   const out = new Array(values.length).fill(null);

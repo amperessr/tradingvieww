@@ -1,6 +1,6 @@
 // 圖表上的交易線（持倉、掛單、止盈、止損、下單預覽）：
 // 線本身與價格軸標籤用 series.createPriceLine，左側的可拖曳標籤用 HTML 疊在圖上。
-import { LineStyle } from '../node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.mjs';
+import { LineStyle } from '../lib/lightweight-charts.standalone.production.mjs';
 
 export class TradeLines {
   constructor({ chart, series, wrap, overlay, round }) {

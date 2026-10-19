@@ -2,14 +2,20 @@
 
 仿 TradingView 介面的網頁版 K 線圖，使用 TradingView 開源的 [Lightweight Charts](https://github.com/tradingview/lightweight-charts)（v5.2.1，Apache 2.0）。
 
-## 啟動
+## 線上使用
+
+👉 https://amperessr.github.io/tradingvieww/
+
+不用安裝，打開網址就能用。模擬交易紀錄、繪圖、偏好設定都只存在你自己的瀏覽器（localStorage），不會上傳到任何地方。
+所在地區連不上 Binance 時，會自動改用模擬行情（圖例旁的綠點變成橘色）。
+
+## 在自己電腦上跑
 
 ```bash
-npm install
 npm start
 ```
 
-開啟 http://localhost:5173
+開啟 http://localhost:5173（只需要 Node.js，不用 `npm install`；任何靜態網頁伺服器都可以）
 
 ## 功能
 
@@ -55,4 +61,10 @@ npm start
 | `js/lefttoolbar.js` | 左側工具列與工具清單 |
 | `js/replay.js` | K 線重播（選段、播放、倒轉、加速） |
 | `js/indicators.js` | 技術指標 |
-| `vendor/lightweight-charts-src/` | 從 GitHub 抓下來的 Lightweight Charts 原始碼（參考用） |
+| `lib/` | TradingView Lightweight Charts v5.2.1 打包檔與授權（`npm run update-lib` 可更新） |
+
+## 授權與聲明
+
+- 圖表使用 [TradingView Lightweight Charts™](https://github.com/tradingview/lightweight-charts)（Apache License 2.0，見 `lib/LIGHTWEIGHT-CHARTS-LICENSE`、`lib/LIGHTWEIGHT-CHARTS-NOTICE`），圖表左下角保留 TradingView 標誌作為出處標示。
+- 本專案是個人製作的練習／教學用模擬工具，與 TradingView Inc. 及 Binance 沒有任何關係，也不是官方產品。
+- 所有交易都是模擬，不會動到真實資金；畫面內容不構成任何投資建議。

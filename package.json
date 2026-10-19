@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "update-lib": "npm install lightweight-charts@5 && node -e \"require('fs').copyFileSync('node_modules/lightweight-charts/dist/lightweight-charts.standalone.production.mjs','lib/lightweight-charts.standalone.production.mjs')\""
   },
-  "dependencies": {
+  "devDependencies": {
     "lightweight-charts": "^5.2.1"
   }
 }
