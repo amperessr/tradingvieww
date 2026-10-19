@@ -485,7 +485,7 @@ export class Drawings {
         default: return P.map((p, i) => ({ id: `p${i}`, ...p }));
       }
     }
-    const x1 = this.toX(d.t1), x2 = this.toX(d.t2);
+    const x1 = this.toX(d.t1), x2 = this.toX(this._posT2(d));
     return [
       { id: 'tp', x: x1, y: this.toY(d.tp), square: true }, { id: 'sl', x: x1, y: this.toY(d.sl), square: true },
       { id: 'entry', x: x1, y: this.toY(d.entry) }, { id: 'width', x: x2, y: this.toY(d.entry), square: true },
@@ -505,7 +505,7 @@ export class Drawings {
   _hitBody(d, x, y) {
     const W = this._paneW(), H = this._paneH();
     if (d.type === 'long' || d.type === 'short') {
-      const x1 = this.toX(d.t1), x2 = this.toX(d.t2), ys = [this.toY(d.tp), this.toY(d.sl)];
+      const x1 = this.toX(d.t1), x2 = this.toX(this._posT2(d)), ys = [this.toY(d.tp), this.toY(d.sl)];
       return x >= x1 && x <= x2 && y >= Math.min(...ys) && y <= Math.max(...ys);
     }
     const P = d.p.map(q => this._xy(q));
@@ -822,7 +822,8 @@ export class Drawings {
     const bars = this.getBars();
     if (!bars.length) return { open: null };
     const step = this.getStep(), base = bars[0].time, long = d.type === 'long';
-    const end = Math.min(bars.length - 1, Math.floor((d.t2 - base) / step));
+    // 放在最新 K 線上的部位框會一直往右延伸，直到碰到止盈或止損
+    const end = d.fromNext ? bars.length - 1 : Math.min(bars.length - 1, Math.floor((d.t2 - base) / step));
     let open = null, close = null;
     for (let i = Math.max(0, Math.ceil((d.t1 - base) / step) + (d.fromNext ? 1 : 0)); i <= end; i++) {
       const b = bars[i];
@@ -838,8 +839,18 @@ export class Drawings {
     return { open, close, cur };
   }
 
+  // 部位框實際的右緣：一般就是 t2；放在最新 K 線上的（例如重播時）會延伸到平倉那根，未平倉時延伸到最新 K 線的下一根
+  _posT2(d, st = this._posState(d)) {
+    if (!d.fromNext) return d.t2;
+    const bars = this.getBars();
+    if (!bars.length) return d.t2;
+    const step = this.getStep();
+    return Math.max(d.t2, (st.close ? st.close.t : bars[bars.length - 1].time) + step);
+  }
+
   _drawPosition(ctx, d, active) {
-    const x1 = this.toX(d.t1), x2 = this.toX(d.t2);
+    const st = this._posState(d);
+    const x1 = this.toX(d.t1), x2 = this.toX(this._posT2(d, st));
     const yE = this.toY(d.entry), yT = this.toY(d.tp), yS = this.toY(d.sl);
     if ([x1, x2, yE, yT, yS].some(v => v == null)) return;
     const w = x2 - x1, long = d.type === 'long', dir = long ? 1 : -1;
@@ -849,7 +860,6 @@ export class Drawings {
     ctx.fillStyle = 'rgba(242, 54, 69, 0.2)';
     ctx.fillRect(x1, Math.min(yE, yS), w, Math.abs(yS - yE));
 
-    const st = this._posState(d);
     let pnl = 0;
     if (st.open) {
       const xo = this.toX(st.open.t), xc = this.toX(st.cur.t), yc = this.toY(st.cur.price);
@@ -865,7 +875,8 @@ export class Drawings {
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x1, Math.round(yE) + 0.5); ctx.lineTo(x2, Math.round(yE) + 0.5); ctx.stroke();
 
-    if (!active) return;
+    // 數據標籤預設一直顯示（錄影時滑鼠不在框上也看得到），可在浮動工具列關掉
+    if (!active && d.hideStats) return;
     const prec = this.getPrecision();
     const risk = Math.abs(d.entry - d.sl), reward = Math.abs(d.tp - d.entry);
     const qty = (POS_ACCOUNT * POS_RISK) / risk;
@@ -915,7 +926,7 @@ export class Drawings {
     for (const d of this.list) {
       const sel = d === this.selected || d === this.hovered;
       if (d.type === 'hline' || d.type === 'hray' || d.type === 'crossline') mk(d.p[0].price, d.color);
-      else if ((d.type === 'long' || d.type === 'short') && sel) { mk(d.tp, GREEN); mk(d.entry, '#5d606b'); mk(d.sl, RED); }
+      else if ((d.type === 'long' || d.type === 'short') && (sel || !d.hideStats)) { mk(d.tp, GREEN); mk(d.entry, '#5d606b'); mk(d.sl, RED); }
       else if (d.p && d === this.selected && !FREEHAND.has(d.type) && d.type !== 'vline') d.p.forEach(q => mk(q.price, BLUE));
     }
     if (this.measure) this.measure.p.forEach(q => mk(q.price, this.measure.p[1].price < this.measure.p[0].price ? RED : BLUE));
@@ -932,7 +943,7 @@ export class Drawings {
     for (const d of this.list) {
       if (d.type === 'vline' || d.type === 'crossline') mk(d.p[0].t, d.color);
       else if (d.p && d === this.selected && !FREEHAND.has(d.type) && !['hline', 'hray'].includes(d.type)) d.p.forEach(q => mk(q.t, BLUE));
-      else if ((d.type === 'long' || d.type === 'short') && d === this.selected) { mk(d.t1, BLUE); mk(d.t2, BLUE); }
+      else if ((d.type === 'long' || d.type === 'short') && d === this.selected) { mk(d.t1, BLUE); mk(this._posT2(d), BLUE); }
     }
     return views;
   }

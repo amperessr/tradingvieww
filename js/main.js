@@ -658,6 +658,7 @@ function renderFloatTb(d) {
     ${d.type === 'text' ? `<button class="ft-btn ${ftbPop === 'size' ? 'open' : ''}" data-pop="size" title="字體大小">${d.size}</button>` : ''}
     ${hasWidth ? `<button class="ft-btn ${ftbPop === 'width' ? 'open' : ''}" data-pop="width" title="線寬"><svg viewBox="0 0 28 28" width="28" height="28"><path stroke="currentColor" stroke-width="${d.width}" d="M6 14h16"/></svg><span>${d.width}px</span></button>` : ''}
     ${lineStyle ? `<button class="ft-btn ${ftbPop === 'style' ? 'open' : ''}" data-pop="style" title="線條樣式">${styleIcon(d.style)}</button>` : ''}
+    ${d.type === 'long' || d.type === 'short' ? `<button class="ft-btn ${d.hideStats ? '' : 'on'}" data-act="stats" title="${d.hideStats ? '一直顯示數據標籤' : '只在選取時顯示數據標籤'}"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M6.5 8.5h15v8h-6l-3 3v-3h-6zM10 12.5h8"/></svg><span>數據</span></button>` : ''}
     <div class="ft-sep"></div>
     <button class="ft-btn soon-ft" data-act="settings" title="設定"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M10.3 6.5h7.4L21.5 14l-3.8 7.5h-7.4L6.5 14z"/><circle cx="14" cy="14" r="2.8" fill="none" stroke="currentColor"/></svg></button>
     <button class="ft-btn ${d.locked ? 'on' : ''}" data-act="lock" title="${d.locked ? '解鎖' : '鎖定'}"><svg viewBox="0 0 28 28" width="28" height="28">${d.locked ? ICONS.lockon : ICONS.lock}</svg></button>
@@ -696,6 +697,7 @@ ftb.addEventListener('click', e => {
   if (t.dataset.pop) { ftbPop = ftbPop === t.dataset.pop ? null : t.dataset.pop; renderFloatTb(d); return; }
   if (t.dataset.act === 'delete') { drawings.deleteSelected(); return; }
   if (t.dataset.act === 'lock') { drawings.setStyle({ locked: !d.locked }); return; }
+  if (t.dataset.act === 'stats') { drawings.setStyle({ hideStats: !d.hideStats }); return; }
   if (t.dataset.act === 'settings') { toast('示範版', '繪圖設定對話框尚未實作，可用左邊的顏色/線寬調整', 'info'); return; }
   ftbPop = null;
   if (t.dataset.color) drawings.setStyle({ color: t.dataset.color });
