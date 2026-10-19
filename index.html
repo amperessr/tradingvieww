@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTCUSDT.P — 假TradingView</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- ===== 頂部工具列 ===== -->
+  <header id="topbar">
+    <button class="tb-avatar" title="個人資料">A</button>
+    <div class="tb-symbol-pill">
+      <button class="tb-symbol" id="symbolBtn" title="商品代碼搜尋"><span id="symbolText">BTCUSDT.P</span></button>
+      <button class="tb-sym-ic soon" title="商品資訊"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M5.5 4v10M3.5 6.5h4v5h-4zM12.5 4v10M10.5 6.5h4v5h-4z"/></svg></button>
+    </div>
+    <button class="tb-btn tb-icon soon" title="比較或新增商品"><svg viewBox="0 0 28 28" width="28" height="28"><circle cx="14" cy="14" r="8.5" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M14 9.5v9M9.5 14h9"/></svg></button>
+    <div class="tb-sep"></div>
+    <div class="tb-group" id="intervalGroup"></div>
+    <div class="tb-dropdown" id="intervalWrap">
+      <button class="tb-btn tb-caret" id="intervalCaret" title="時間週期"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="none" stroke="currentColor" d="M4 6.5l4 4 4-4"/></svg></button>
+      <div class="dd-menu" id="intervalMenu"></div>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tb-dropdown" id="chartTypeWrap">
+      <button class="tb-btn tb-icon" id="chartTypeBtn" title="K線類型"></button>
+      <div class="dd-menu" id="chartTypeMenu"></div>
+    </div>
+    <div class="tb-sep"></div>
+    <button class="tb-btn" id="indicatorsBtn" title="技術指標、指標和策略">
+      <svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M6.5 21.5v-15M6.5 21.5h15M9.5 18.5v-3M13 18.5v-6M16.5 18.5v-4M20 18.5v-8M9 12l4-3.5 3.5 2.5L21 6.5"/></svg>
+      <span>技術指標</span>
+    </button>
+    <button class="tb-btn tb-caret" id="indicatorsCaret"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="none" stroke="currentColor" d="M4 6.5l4 4 4-4"/></svg></button>
+    <button class="tb-btn tb-icon soon" title="指標模板"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M7.5 7.5h5v5h-5zM15.5 7.5h5v5h-5zM7.5 15.5h5v5h-5zM15.5 15.5h5v5h-5z"/></svg></button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn soon" title="建立快訊"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M20.5 14a6.5 6.5 0 1 1-6.5-6.5M14 10.5V14l2 2M7 7.5l2-2M19 5.5v5M16.5 8h5"/></svg><span>快訊</span></button>
+    <button class="tb-btn" id="replayBtn" title="K線重播（選擇起點後逐根播放）"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M13.5 19.5v-11l-6 5.5 6 5.5ZM20.5 19.5v-11l-6 5.5 6 5.5Z"/></svg><span>重播</span></button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn tb-icon" id="undoBtn" title="復原 Ctrl+Z"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M9.5 12.5h9a4 4 0 0 1 0 8h-3M12.5 8.5l-4 4 4 4"/></svg></button>
+    <button class="tb-btn tb-icon" id="redoBtn" title="重做 Ctrl+Y"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M18.5 12.5h-9a4 4 0 0 0 0 8h3M15.5 8.5l4 4-4 4"/></svg></button>
+    <div class="tb-spacer"></div>
+    <button class="tb-btn tb-icon soon" title="選擇版面"><svg viewBox="0 0 28 28" width="28" height="28"><rect x="7.5" y="7.5" width="13" height="13" rx="1.5" fill="none" stroke="currentColor"/></svg></button>
+    <button class="tb-btn tb-save" id="saveBtn" title="儲存全部圖表"><b>b</b><small>儲存</small></button>
+    <button class="tb-btn tb-caret soon" title="管理版面"><svg viewBox="0 0 16 16" width="16" height="16"><path fill="none" stroke="currentColor" d="M4 6.5l4 4 4-4"/></svg></button>
+    <div class="tb-sep"></div>
+    <button class="tb-btn tb-icon soon" title="快速搜尋"><svg viewBox="0 0 28 28" width="28" height="28"><circle cx="12.5" cy="12.5" r="5.5" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M16.5 16.5l5 5M18 5.5l.8 1.7 1.7.8-1.7.8-.8 1.7-.8-1.7-1.7-.8 1.7-.8z"/></svg></button>
+    <button class="tb-btn tb-icon soon" title="設定"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M10.3 6.5h7.4L21.5 14l-3.8 7.5h-7.4L6.5 14z"/><circle cx="14" cy="14" r="2.8" fill="none" stroke="currentColor"/></svg></button>
+    <button class="tb-btn tb-icon" id="fullscreenBtn" title="全螢幕模式"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M8.5 12V8.5H12M16 8.5h3.5V12M19.5 16v3.5H16M12 19.5H8.5V16"/></svg></button>
+    <button class="tb-btn tb-icon" id="screenshotBtn" title="拍攝快照"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M11 9.5l1.2-2h3.6l1.2 2h3.5a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1H11Z"/><circle cx="14" cy="14.5" r="3" fill="none" stroke="currentColor"/></svg></button>
+    <button class="tb-btn tb-icon soon" title="發佈想法"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M11.5 21.5h5M11.5 19h5c0-2.5 3-3.7 3-7.3a5.5 5.5 0 1 0-11 0c0 3.6 3 4.8 3 7.3ZM14 11v4M12 13h4"/></svg></button>
+    <button class="tb-trade" id="tradeBtn">交易</button>
+    <button class="tb-upgrade soon">升級</button>
+  </header>
+
+  <div id="main">
+    <aside id="lefttools"></aside>
+
+    <section id="center">
+      <div id="chartwrap">
+        <div id="chart"></div>
+        <div id="legend">
+          <div class="lg-row lg-title">
+            <span class="lg-logo" id="lgLogo">₿</span>
+            <span class="lg-name" id="lgName">Bitcoin/USD Tether Perpetual Contract</span><span class="lg-dot">·</span><span id="lgInterval">30</span><span class="lg-dot">·</span><span id="lgExch">Binance</span>
+            <svg class="lg-flag" viewBox="0 0 16 16" width="16" height="16"><path fill="#ff5252" d="M3 2h10l-2.5 3.5L13 9H3z"/><path fill="#ff5252" d="M3 2h1.2v12H3z"/></svg>
+            <span class="lg-pill" id="lgStatus" title="市場開放"><i class="lg-live"></i><i class="lg-approx">≈</i></span>
+            <span class="lg-ohlc" id="lgOhlc"></span>
+          </div>
+          <div class="lg-row lg-trade" id="quickTrade">
+            <button class="qt-sell" id="qtSell"><span class="qt-price" id="qtSellPrice">—</span><span class="qt-label">賣出</span></button>
+            <input class="qt-qty" id="qtQty" value="1" spellcheck="false" title="數量">
+            <button class="qt-buy" id="qtBuy"><span class="qt-price" id="qtBuyPrice">—</span><span class="qt-label">買入</span></button>
+          </div>
+          <div id="lgIndicators"></div>
+          <button class="lg-collapse" id="lgCollapse" title="隱藏指標圖例"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M5 10.5l4-4 4 4"/></svg></button>
+        </div>
+        <div id="paneLegends"></div>
+        <div id="tradeOverlay"></div>
+        <div class="ps-cur" id="psCur">USDT <svg viewBox="0 0 10 10" width="10" height="10"><path fill="none" stroke="currentColor" d="M2.5 4l2.5 2.5L7.5 4"/></svg></div>
+        <button class="ps-gear" id="psGear" title="座標設定"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M6.3 3.5h5.4L14.5 9l-2.8 5.5H6.3L3.5 9z"/><circle cx="9" cy="9" r="2" fill="none" stroke="currentColor"/></svg></button>
+        <div class="dd-menu ps-menu" id="psMenu"></div>
+        <div class="float-tb" id="floatTb" hidden></div>
+        <div id="ctxMenu" class="ctx-menu"></div>
+      </div>
+      <div id="rangebar">
+        <div class="rb-left" id="rangeGroup"></div>
+        <div class="rb-sep"></div>
+        <div class="tb-dropdown">
+          <button class="rb-btn rb-icon" id="gotoBtn" title="前往"><svg viewBox="0 0 28 28" width="22" height="22"><path fill="none" stroke="currentColor" d="M8.5 8.5h11v11h-11zM8.5 11.5h11M11.5 6.5v3M16.5 6.5v3M14 14v4M12 16l2 2 2-2"/></svg></button>
+          <div class="dd-menu goto-menu" id="gotoMenu"><div class="goto-row"><input type="datetime-local" id="gotoInput"><button id="gotoGo">前往</button></div></div>
+        </div>
+        <div class="tb-spacer"></div>
+        <span class="rb-clock" id="clock"></span>
+      </div>
+      <div id="bottomResizer" hidden></div>
+      <div id="bottom" hidden>
+        <div class="bt-tabs">
+          <button class="bt-tab soon">股票篩選器</button>
+          <button class="bt-tab soon">Pine 編輯器</button>
+          <button class="bt-tab soon">策略測試器</button>
+          <button class="bt-tab active" id="tabTrading">交易面板</button>
+          <div class="tb-spacer"></div>
+          <button class="bt-collapse" id="bottomToggle" title="最小化面板"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M4 7l5 5 5-5"/></svg></button>
+          <button class="bt-collapse" id="bottomClose" title="關閉面板"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M5 5l8 8M13 5l-8 8"/></svg></button>
+        </div>
+        <div class="bt-body" id="bottomBody">
+          <div class="acct-row">
+            <div class="broker"><span class="broker-logo">PT</span><span>模擬交易</span></div>
+            <div class="acct-item"><span class="acct-k">帳戶餘額</span><span class="acct-v" id="acBalance">—</span></div>
+            <div class="acct-item"><span class="acct-k">權益</span><span class="acct-v" id="acEquity">—</span></div>
+            <div class="acct-item"><span class="acct-k">已實現損益</span><span class="acct-v" id="acRealized">—</span></div>
+            <div class="acct-item"><span class="acct-k">未實現損益</span><span class="acct-v" id="acUnrealized">—</span></div>
+            <div class="acct-item"><span class="acct-k">帳戶保證金</span><span class="acct-v" id="acMargin">—</span></div>
+            <div class="acct-item"><span class="acct-k">可用資金</span><span class="acct-v" id="acAvail">—</span></div>
+            <div class="tb-spacer"></div>
+            <button class="acct-reset" id="acReset">重置帳戶</button>
+          </div>
+          <div class="pt-tabs" id="ptTabs">
+            <button data-tab="positions" class="active">持倉 <span id="cntPos">0</span></button>
+            <button data-tab="orders">訂單 <span id="cntOrd">0</span></button>
+            <button data-tab="history">歷史</button>
+            <button data-tab="journal">日誌</button>
+          </div>
+          <div class="pt-table" id="ptTable"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside id="rightpanel" hidden>
+      <div class="rp-view" id="viewWatchlist" hidden>
+        <div class="rp-head"><span class="rp-title">觀察清單 <svg viewBox="0 0 8 12" width="8" height="12" style="transform:rotate(90deg)"><path fill="none" stroke="currentColor" d="M2 2l4 4-4 4"/></svg></span><div class="tb-spacer"></div><button class="rp-ico" id="wlAdd" title="新增商品">+</button></div>
+        <div class="wl-cols"><span>商品</span><span>最新價</span><span>漲跌</span><span>漲跌%</span></div>
+        <div id="watchlist"></div>
+        <div id="details"></div>
+      </div>
+      <div class="rp-view" id="viewTree" hidden></div>
+      <div class="rp-view" id="viewOrder" hidden></div>
+    </aside>
+    <nav id="rightbar">
+      <button class="rb-tool" data-view="viewWatchlist" title="觀察清單、詳情和新聞"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M8.5 6.5h11v15l-5.5-3.5-5.5 3.5z"/><path fill="none" stroke="currentColor" d="M11.5 10.5h5M11.5 13.5h5"/></svg></button>
+      <button class="rb-tool soon" title="快訊"><svg viewBox="0 0 28 28" width="28" height="28"><circle cx="14" cy="15" r="7" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M14 11v4l2.5 2M8 7.5l-2 2M20 7.5l2 2"/></svg></button>
+      <button class="rb-tool" data-view="viewTree" title="物件樹和資料視窗"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M14 7.5l7.5 4-7.5 4-7.5-4zM6.5 15l7.5 4 7.5-4"/></svg></button>
+      <div class="tb-spacer"></div>
+      <button class="rb-tool soon" title="Pine 腳本"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M14 5.5l1.8 6.7 6.7 1.8-6.7 1.8-1.8 6.7-1.8-6.7-6.7-1.8 6.7-1.8z"/></svg></button>
+      <button class="rb-tool soon" title="技術分析"><svg viewBox="0 0 28 28" width="28" height="28"><circle cx="14" cy="14" r="8" fill="none" stroke="currentColor"/><circle cx="14" cy="14" r="4.5" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M14 14l4.5-4.5"/></svg></button>
+      <button class="rb-tool soon" title="熱門清單"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M6 20.5l8-13 8 13zM9.5 15l4.5 3 4.5-3"/></svg></button>
+      <button class="rb-tool soon" title="財經日曆"><svg viewBox="0 0 28 28" width="28" height="28"><rect x="6.5" y="8.5" width="15" height="13" rx="1.5" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M6.5 12.5h15M10.5 6v4M17.5 6v4"/></svg></button>
+      <button class="rb-tool soon" title="新聞快訊"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M7.5 20.5a.5.5 0 1 1 0-1M7 13.5a7.5 7.5 0 0 1 7.5 7.5M7 7.5A13.5 13.5 0 0 1 20.5 21"/></svg></button>
+      <button class="rb-tool soon" title="通知"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M9 18.5v-5.5a5 5 0 0 1 10 0v5.5l1.5 2h-13zM12 21.5a2 2 0 0 0 4 0"/></svg></button>
+      <button class="rb-tool soon" title="聊天"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M6.5 7.5h15v10h-9l-4 3.5v-3.5h-2z"/></svg></button>
+      <button class="rb-tool rb-apps soon" title="產品"><svg viewBox="0 0 28 28" width="28" height="28"><g fill="currentColor"><circle cx="9" cy="9" r="1.7"/><circle cx="14" cy="9" r="1.7"/><circle cx="19" cy="9" r="1.7"/><circle cx="9" cy="14" r="1.7"/><circle cx="14" cy="14" r="1.7"/><circle cx="19" cy="14" r="1.7"/><circle cx="9" cy="19" r="1.7"/><circle cx="14" cy="19" r="1.7"/><circle cx="19" cy="19" r="1.7"/></g></svg></button>
+      <div class="rb-hsep"></div>
+      <button class="rb-tool soon" title="說明中心"><svg viewBox="0 0 28 28" width="28" height="28"><circle cx="14" cy="14" r="8" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M11.8 12a2.3 2.3 0 1 1 3.2 2.1c-.6.3-1 .8-1 1.4v.5M14 18v1"/></svg></button>
+    </nav>
+  </div>
+</div>
+
+<div class="flyout" id="flyout"></div>
+<div class="modal-back" id="modalBack" hidden>
+  <div class="modal" id="modal"></div>
+</div>
+<div id="toasts"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

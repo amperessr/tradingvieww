@@ -1,0 +1,9 @@
+# npm install 會自動裝回來
+node_modules/
+# 從 GitHub 抓下來參考用的 Lightweight Charts 原始碼（本身是另一個 git 倉庫）
+vendor/
+# 本機工具設定
+.claude/
+# 系統檔
+Thumbs.db
+.DS_Store
