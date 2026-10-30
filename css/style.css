@@ -441,3 +441,48 @@ input { font: inherit; color: inherit; }
 /* 播放時控制列淡出，避免擋到錄影畫面；滑鼠移過去就會出現 */
 .replay-bar { transition: opacity .3s; }
 .replay-bar.playing:not(:hover) { opacity: 0; }
+
+/* ===== 價格軸旁的「＋」下單按鈕 ===== */
+.ps-plus {
+  position: absolute; z-index: 8; width: 20px; height: 20px; border-radius: 4px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: #2e2e2e; border: 1px solid #4a4a4a; color: var(--text);
+}
+.ps-plus:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+/* ===== 止盈 / 止損 觸發特效 ===== */
+.hit-fx { position: absolute; z-index: 9; width: 0; height: 0; pointer-events: none; }
+.hit-fx.tp { --c: #089981; --c2: #2bd9b5; }
+.hit-fx.sl { --c: #f23645; --c2: #ff7782; }
+.hit-fx .hf-ring {
+  position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%;
+  border: 3px solid var(--c2); box-shadow: 0 0 14px var(--c); animation: hfRing .9s ease-out forwards;
+}
+.hit-fx .hf-ring.r2 { opacity: 0; animation-delay: .18s; }
+.hit-fx .hf-dot {
+  position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--c2); box-shadow: 0 0 8px var(--c2); animation: hfDot .95s ease-out forwards;
+}
+.hit-fx .hf-label {
+  position: absolute; left: 0; bottom: 20px; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 6px 18px 7px; border-radius: 10px; white-space: nowrap; color: #fff;
+  background: linear-gradient(180deg, var(--c2), var(--c));
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .28), 0 0 26px var(--c), 0 8px 24px rgba(0, 0, 0, .55);
+  animation: hfPop 2s cubic-bezier(.2, .9, .3, 1.2) forwards;
+}
+.hit-fx .hf-label b { display: block; font-size: 30px; font-weight: 800; letter-spacing: 6px; margin-right: -6px; line-height: 1.15; text-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.hit-fx .hf-label span { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hit-fx.sl .hf-label b { animation: hfShake .45s .12s; }
+@keyframes hfRing { 0% { transform: scale(.2); opacity: 1; } 100% { transform: scale(2.8); opacity: 0; } }
+@keyframes hfDot {
+  0% { transform: rotate(var(--a)) translateX(0) scale(1.2); opacity: 1; }
+  100% { transform: rotate(var(--a)) translateX(var(--d)) scale(.2); opacity: 0; }
+}
+@keyframes hfPop {
+  0% { transform: translateX(-50%) scale(.3); opacity: 0; }
+  12% { transform: translateX(-50%) scale(1.18); opacity: 1; }
+  22% { transform: translateX(-50%) scale(1); }
+  75% { transform: translateX(-50%) translateY(-14px); opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-36px); opacity: 0; }
+}
+@keyframes hfShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }

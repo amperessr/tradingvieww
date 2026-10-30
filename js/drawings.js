@@ -185,7 +185,7 @@ export class Drawings {
 
   // ================= 事件 =================
   _bindEvents() {
-    const ignore = e => e.target.closest?.('.tl, #legend, #paneLegends .lg-ind, .ctx-menu, .float-tb, .txt-editor, .ps-gear, .ps-cur');
+    const ignore = e => e.target.closest?.('.tl, #legend, #paneLegends .lg-ind, .ctx-menu, .float-tb, .txt-editor, .ps-gear, .ps-cur, .ps-plus');
     const block = e => { e.stopPropagation(); e.preventDefault(); this._swallow = true; };
 
     this.wrap.addEventListener('pointerdown', e => {
@@ -294,9 +294,9 @@ export class Drawings {
       const risk = Math.abs(this.series.coordinateToPrice(y) - this.series.coordinateToPrice(y + h * 0.08));
       const dir = type === 'long' ? 1 : -1;
       Object.assign(d, { t1: pt.t, t2: pt.t + 30 * this.getStep(), entry: pt.price, sl: this._round(pt.price - dir * risk), tp: this._round(pt.price + dir * risk) });
-      // 放在最新一根 K 線上（例如重播時）就從下一根開始算進場，不把已經走完的那根算進去
+      // 放在最新 K 線上或右邊的空白處（例如重播時）：只看之後才出現的 K 線，價格碰到進場價才算開倉
       const bars = this.getBars();
-      if (bars.length && pt.t >= bars[bars.length - 1].time) d.fromNext = true;
+      if (bars.length && pt.t >= bars[bars.length - 1].time) d.after = bars[bars.length - 1].time;
       this.list.push(d);
       this._done(d);
       return;
@@ -822,10 +822,12 @@ export class Drawings {
     const bars = this.getBars();
     if (!bars.length) return { open: null };
     const step = this.getStep(), base = bars[0].time, long = d.type === 'long';
-    // 放在最新 K 線上的部位框會一直往右延伸，直到碰到止盈或止損
-    const end = d.fromNext ? bars.length - 1 : Math.min(bars.length - 1, Math.floor((d.t2 - base) / step));
+    // 放在最新 K 線之後的部位框會一直往右延伸，直到碰到止盈或止損
+    const after = d.after ?? (d.fromNext ? d.t1 : null);
+    const end = after != null ? bars.length - 1 : Math.min(bars.length - 1, Math.floor((d.t2 - base) / step));
+    const i0 = Math.max(0, Math.ceil((d.t1 - base) / step), after != null ? Math.floor((after - base) / step) + 1 : 0);
     let open = null, close = null;
-    for (let i = Math.max(0, Math.ceil((d.t1 - base) / step) + (d.fromNext ? 1 : 0)); i <= end; i++) {
+    for (let i = i0; i <= end; i++) {
       const b = bars[i];
       if (!open) {
         if (b.low <= d.entry && b.high >= d.entry) open = { t: b.time };
@@ -839,9 +841,12 @@ export class Drawings {
     return { open, close, cur };
   }
 
+  // 給外部用：部位框目前狀態（是否進場、是否平倉、平倉價）
+  positionState(d) { return this._posState(d); }
+
   // 部位框實際的右緣：一般就是 t2；放在最新 K 線上的（例如重播時）會延伸到平倉那根，未平倉時延伸到最新 K 線的下一根
   _posT2(d, st = this._posState(d)) {
-    if (!d.fromNext) return d.t2;
+    if (d.after == null && !d.fromNext) return d.t2;
     const bars = this.getBars();
     if (!bars.length) return d.t2;
     const step = this.getStep();
@@ -889,9 +894,9 @@ export class Drawings {
     const tY = long ? top - 13 : bottom + 13, sY = long ? bottom + 13 : top - 13;
     box(ctx, cx, tY, [`目標：${this.fmt(reward)} (${pct(reward)}%) ${ticks(reward)}, 金額：${+(POS_ACCOUNT + qty * reward).toFixed(2)}`], GREEN);
     box(ctx, cx, sY, [`停損：${this.fmt(risk)} (${pct(risk)}%) ${ticks(risk)}, 金額：${+(POS_ACCOUNT - qty * risk).toFixed(2)}`], RED);
-    const label = st.close ? '已平倉盈虧' : '未平倉盈虧';
-    box(ctx, cx, yE, [`${label}：${signed(pnl)}, 數量：${num(qty, 3)}`, `風險/報酬比：${num(reward / risk)}`],
-      !st.open ? '#5d606b' : pnl >= 0 ? GREEN : RED, d === this.selected);
+    const first = !st.open ? `等待進場：${this.fmt(d.entry)}, 數量：${num(qty, 3)}`
+      : `${st.close ? '已平倉盈虧' : '未平倉盈虧'}：${signed(pnl)}, 數量：${num(qty, 3)}`;
+    box(ctx, cx, yE, [first, `風險/報酬比：${num(reward / risk)}`], !st.open ? '#5d606b' : pnl >= 0 ? GREEN : RED, d === this.selected);
   }
 
   _drawHandles(ctx, d) {

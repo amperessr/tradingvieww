@@ -1,6 +1,6 @@
 import {
   createChart, CandlestickSeries, BarSeries, LineSeries, AreaSeries, HistogramSeries,
-  ColorType, CrosshairMode, LineStyle, PriceScaleMode,
+  ColorType, CrosshairMode, LineStyle, PriceScaleMode, createTextWatermark,
 } from '../lib/lightweight-charts.standalone.production.mjs';
 import { Datafeed, INTERVALS, FAVORITE_INTERVALS, intervalSec, SYMBOLS, symbolMeta, displaySymbol, EXCHANGE, TZ_OFFSET } from './datafeed.js';
 import { Broker, sideText, typeText } from './broker.js';
@@ -37,6 +37,7 @@ const state = {
   rightView: prefs.rightView || null,
   bottomOpen: !!prefs.bottomOpen,
   indicatorsHidden: false,
+  watermark: prefs.watermark !== false,
 };
 const ticket = { side: 'buy', type: 'market', price: null, tpOn: false, slOn: false, tp: null, sl: null };
 let toolbarState = prefs.toolbar || {};
@@ -49,7 +50,7 @@ function savePrefs() {
     localStorage.setItem(PREF_KEY, JSON.stringify({
       symbol: state.symbol, interval: state.interval, chartType: state.chartType, favorites: state.favorites,
       indicators: indicators.list.map(i => ({ type: i.type, params: i.params })), volume: state.volumeVisible,
-      rightView: state.rightView, bottomOpen: state.bottomOpen, toolbar: toolbarState,
+      rightView: state.rightView, bottomOpen: state.bottomOpen, toolbar: toolbarState, watermark: state.watermark,
     }));
   } catch { /* 忽略 */ }
 }
@@ -204,6 +205,22 @@ function setChartType(type) {
 
 mainSeries = createMainSeries();
 
+// 背景浮水印：目前的幣種（跟著商品/週期切換）
+const watermark = createTextWatermark(chart.panes()[0], { horzAlign: 'center', vertAlign: 'center', lines: [] });
+function updateWatermark() {
+  const text = displaySymbol(state.symbol || 'BTCUSDT');
+  const w = chart.timeScale().width() || 800;
+  const big = Math.round(Math.max(48, Math.min(150, (w * 0.62) / (text.length * 0.62))));
+  const iv = INTERVALS.find(i => i.id === state.interval);
+  watermark.applyOptions({
+    visible: state.watermark,
+    lines: [
+      { text, color: 'rgba(219, 219, 219, 0.09)', fontSize: big, fontStyle: 'bold', lineHeight: Math.round(big * 1.1) },
+      { text: `${symbolMeta(state.symbol || 'BTCUSDT').desc} · ${iv?.legend ?? ''}`, color: 'rgba(219, 219, 219, 0.09)', fontSize: Math.round(big * 0.2) },
+    ],
+  });
+}
+
 // ================= 模組 =================
 const feed = new Datafeed();
 // 平常用的模擬帳戶（存在瀏覽器）＋ 重播模式用的臨時帳戶（不存檔，進入重播時重置）
@@ -217,7 +234,7 @@ const drawings = new Drawings({
   getBars: () => state.bars, getStep: () => intervalSec(state.interval), getPrecision: () => state.precision,
   fmt: p => fmt(p), fmtTime, fmtVol,
   onToolDone: () => toolbar.cursorReset(),
-  onChange: () => { renderTree(); toolbar?.render(); },
+  onChange: () => { renderTree(); toolbar?.render(); checkPositionHits(false); },
   onSelect: d => { renderFloatTb(d); renderTree(); },
 });
 const tradeLines = new TradeLines({ chart, series: mainSeries, wrap, overlay: $('#tradeOverlay'), round: roundP });
@@ -319,6 +336,7 @@ function onBar(bar) {
   if (state.hoverIndex == null) renderLegendValues();
   drawings.update();
   scheduleQuote();
+  checkPositionHits(true);
 }
 
 chart.timeScale().subscribeVisibleLogicalRangeChange(async range => {
@@ -348,6 +366,7 @@ function renderHeader() {
   $('#lgLogo').textContent = meta.icon;
   $('#lgLogo').style.background = meta.color;
   renderIntervals();
+  updateWatermark();
 }
 
 function updateTitle() {
@@ -390,7 +409,7 @@ function positionPaneLegends() {
     if (paneEl) el.style.top = `${paneEl.getBoundingClientRect().top - wrapTop + 4}px`;
   }
 }
-new ResizeObserver(() => { positionPaneLegends(); positionScaleWidgets(); }).observe(wrap);
+new ResizeObserver(() => { positionPaneLegends(); positionScaleWidgets(); updateWatermark(); }).observe(wrap);
 
 function renderLegendValues() {
   const bars = state.bars;
@@ -708,12 +727,9 @@ ftb.addEventListener('click', e => {
 
 // ================= 右鍵選單 =================
 const ctx = $('#ctxMenu');
-wrap.addEventListener('contextmenu', e => {
-  e.preventDefault();
+// 在指定價位下單的選單（右鍵、價格軸旁的「＋」共用）
+function openOrderMenu(x, y, price, { compact = false } = {}) {
   const r = wrap.getBoundingClientRect();
-  const x = e.clientX - r.left, y = e.clientY - r.top;
-  const inPane = x <= chart.timeScale().width() && y <= chart.panes()[0].getHeight();
-  const price = inPane ? roundP(mainSeries.coordinateToPrice(y)) : null;
   const { bid, ask } = bidAsk();
   const q = parseFloat($('#qtQty').value) || state.qty;
   const items = [];
@@ -724,19 +740,54 @@ wrap.addEventListener('contextmenu', e => {
     items.push(
       { html: `<span class="ctx-ic buy">▲</span><span>買入 ${q} ${sym} @ <span class="buy">${fmt(price)}</span> ${typeText(buyType)}</span>`, fn: () => broker.placeOrder({ symbol: state.symbol, side: 'buy', type: buyType, qty: q, price }) },
       { html: `<span class="ctx-ic sell">▼</span><span>賣出 ${q} ${sym} @ <span class="sell">${fmt(price)}</span> ${typeText(sellType)}</span>`, fn: () => broker.placeOrder({ symbol: state.symbol, side: 'sell', type: sellType, qty: q, price }) },
-      { html: '<span class="ctx-ic">＋</span><span>建立新訂單…</span>', fn: () => { ticket.type = 'limit'; ticket.side = price < ask ? 'buy' : 'sell'; ticket.price = price; ticket.tp = ticket.sl = null; showView('viewOrder'); } },
-      'sep',
+      { html: '<span class="ctx-ic">＋</span><span>建立新訂單…</span>', fn: () => { ticket.side = price < ask ? 'buy' : 'sell'; ticket.type = ticket.side === 'buy' ? buyType : sellType; ticket.price = price; ticket.tp = ticket.sl = null; showView('viewOrder'); } },
+      { html: `<span class="ctx-ic">—</span><span>在 ${fmt(price)} 繪製水平線</span>`, fn: () => { drawings.list.push({ type: 'hline', color: BLUE, width: 1, p: [{ t: 0, price }] }); drawings._commit(); } },
     );
   }
-  items.push(
-    { html: '<span class="ctx-ic">⟲</span><span>重設圖表視圖</span>', fn: resetView },
-    { html: `<span class="ctx-ic">🗑</span><span>移除 ${drawings.list.length} 個繪圖</span>`, fn: () => drawings.clear() },
-  );
+  if (!compact) {
+    if (items.length) items.push('sep');
+    items.push(
+      { html: '<span class="ctx-ic">⟲</span><span>重設圖表視圖</span>', fn: resetView },
+      { html: `<span class="ctx-ic">🗑</span><span>移除 ${drawings.list.length} 個繪圖</span>`, fn: () => drawings.clear() },
+    );
+  }
   ctx.innerHTML = items.map((it, i) => it === 'sep' ? '<div class="ctx-sep"></div>' : `<button class="ctx-item" data-i="${i}">${it.html}</button>`).join('');
   ctx.querySelectorAll('.ctx-item').forEach(b => b.onclick = () => { ctx.classList.remove('open'); items[+b.dataset.i].fn(); });
   ctx.classList.add('open');
-  ctx.style.left = `${Math.min(x, r.width - ctx.offsetWidth - 4)}px`;
-  ctx.style.top = `${Math.min(y, r.height - ctx.offsetHeight - 4)}px`;
+  ctx.style.left = `${Math.max(4, Math.min(x, r.width - ctx.offsetWidth - 4))}px`;
+  ctx.style.top = `${Math.max(4, Math.min(y, r.height - ctx.offsetHeight - 4))}px`;
+}
+wrap.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const r = wrap.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const inPane = x <= chart.timeScale().width() && y <= chart.panes()[0].getHeight();
+  openOrderMenu(x, y, inPane ? roundP(mainSeries.coordinateToPrice(y)) : null);
+});
+
+// 價格軸旁的「＋」：滑鼠指到哪個價位，就能在那裡掛單（仿 TradingView）
+const plusBtn = document.createElement('button');
+plusBtn.className = 'ps-plus';
+plusBtn.title = '在這個價位下單';
+plusBtn.innerHTML = '<svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.5" d="M9 4v10M4 9h10"/></svg>';
+plusBtn.hidden = true;
+wrap.appendChild(plusBtn);
+let plusY = 0, plusPrice = null;
+chart.subscribeCrosshairMove(param => {
+  const p = param.point;
+  const ok = p && p.y <= chart.panes()[0].getHeight() && drawings.tool === 'cursor' && !replay.picking && !drawings.drag && !drawings.creating;
+  if (!ok) { if (!plusBtn.matches(':hover')) plusBtn.hidden = true; return; }
+  plusY = p.y;
+  plusPrice = roundP(mainSeries.coordinateToPrice(p.y));
+  plusBtn.hidden = false;
+  plusBtn.style.top = `${p.y - 10}px`;
+  plusBtn.style.left = `${chart.timeScale().width() - 24}px`;
+});
+plusBtn.addEventListener('pointerdown', e => e.stopPropagation());
+plusBtn.addEventListener('mouseleave', () => { plusBtn.hidden = true; });
+plusBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  openOrderMenu(chart.timeScale().width() - 4 - 300, plusY + 14, plusPrice, { compact: true });
 });
 function resetView() {
   chart.timeScale().resetTimeScale();
@@ -766,6 +817,7 @@ function renderPsMenu() {
     item('pct', '百分比座標', o.mode === PriceScaleMode.Percentage) +
     item('log', '對數座標', o.mode === PriceScaleMode.Logarithmic) +
     item('idx', '指數化至 100', o.mode === PriceScaleMode.IndexedTo100) +
+    '<div class="ctx-sep"></div>' + item('wm', '顯示幣種浮水印', state.watermark) +
     '<div class="ctx-sep"></div>' + item('reset', '重設價格座標', false);
 }
 $('#psGear').onclick = e => { e.stopPropagation(); renderPsMenu(); psMenu.classList.toggle('open'); };
@@ -779,6 +831,7 @@ psMenu.addEventListener('click', e => {
   if (k === 'log') toggle(PriceScaleMode.Logarithmic);
   if (k === 'idx') toggle(PriceScaleMode.IndexedTo100);
   if (k === 'reset') ps.applyOptions({ autoScale: true, mode: PriceScaleMode.Normal });
+  if (k === 'wm') { state.watermark = !state.watermark; updateWatermark(); savePrefs(); }
   renderPsMenu();
 });
 $('#psCur').onclick = () => toast('示範版', '貨幣轉換尚未實作', 'info');
@@ -1198,6 +1251,58 @@ function tick() {
   }
 }
 
+// ================= 止盈 / 止損 觸發特效 =================
+function hitFx({ reason, price, time, sub }) {
+  // 等這一幀的 K 線畫上去之後再定位
+  requestAnimationFrame(() => {
+    const H = chart.panes()[0].getHeight(), W = chart.timeScale().width();
+    const t = time ?? state.bars[state.bars.length - 1]?.time;
+    let x = t != null ? drawings.toX(t) : null;
+    let y = mainSeries.priceToCoordinate(price);
+    if (x == null || y == null) return;
+    x = Math.max(80, Math.min(W - 80, x));
+    y = Math.max(70, Math.min(H - 20, y));
+    const tp = reason === '止盈';
+    const el = document.createElement('div');
+    el.className = `hit-fx ${tp ? 'tp' : 'sl'}`;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    const dots = Array.from({ length: 14 }, (_, i) =>
+      `<i class="hf-dot" style="--a:${i * (360 / 14) + Math.random() * 16 - 8}deg;--d:${45 + Math.random() * 45}px"></i>`).join('');
+    el.innerHTML = `<i class="hf-ring"></i><i class="hf-ring r2"></i>${dots}
+      <div class="hf-label"><b>${tp ? '止盈' : '止損'}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
+    wrap.appendChild(el);
+    setTimeout(() => el.remove(), 2200);
+  });
+}
+
+// 部位框（多頭/空頭部位）在 K 線更新後剛好碰到止盈或止損時跳特效
+const posSeen = new WeakMap();
+function checkPositionHits(fire) {
+  if (drawings.drag) fire = false;
+  for (const d of drawings.list) {
+    if (d.type !== 'long' && d.type !== 'short') continue;
+    const st = drawings.positionState(d);
+    const key = st.close ? `${st.close.t}:${st.close.price}` : '';
+    const prev = posSeen.get(d);
+    posSeen.set(d, key);
+    if (!fire || prev === undefined || prev === key || !key) continue;
+    const pts = (st.close.price - d.entry) * (d.type === 'long' ? 1 : -1);
+    const pct = (pts / d.entry) * 100;
+    hitFx({
+      reason: st.close.price === d.tp ? '止盈' : '止損', price: st.close.price, time: st.close.t,
+      sub: `${pts >= 0 ? '+' : '−'}${fmt(Math.abs(pts))} (${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(2)}%)`,
+    });
+  }
+}
+for (const b of [realBroker, replayBroker]) {
+  b.addEventListener('hit', e => {
+    const h = e.detail;
+    if (b !== broker || h.symbol !== state.symbol) return;
+    hitFx({ reason: h.reason, price: h.price, sub: `${fmtUsd(h.pnl)} USD` });
+  });
+}
+
 // ================= K 線重播 =================
 function leaveReplayBroker() {
   broker = realBroker;
@@ -1222,6 +1327,7 @@ const replay = new Replay({
       if (state.hoverIndex == null) renderLegendValues();
       drawings.update();
       scheduleQuote();
+      checkPositionHits(mode !== 'full');
     },
     feedPrice(prices) {
       for (const p of prices) broker.onPrice(state.symbol, p);

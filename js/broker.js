@@ -209,6 +209,7 @@ export class Broker extends EventTarget {
     this._log(`${what}${sideText(side)} ${qty} ${symbol} 成交於 ${px}${pnlText}`);
     this._notify(order.reason ? `${order.reason}已觸發` : '訂單已成交',
       `${sideText(side)} ${qty} ${symbol} @ ${px}${pnlText}`, pnl < 0 ? 'err' : 'ok');
+    if (order.reason) this.dispatchEvent(new CustomEvent('hit', { detail: { symbol, reason: order.reason, price: fillPrice, pnl } }));
   }
 
   // ---------- 帳戶統計 ----------
