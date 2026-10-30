@@ -9,6 +9,7 @@ import { Drawings, TOOL_NAMES } from './drawings.js';
 import { TradeLines } from './tradelines.js';
 import { buildLeftToolbar, ICONS } from './lefttoolbar.js';
 import { Replay } from './replay.js';
+import { Recorder } from './recorder.js';
 
 const UP = '#089981', DOWN = '#f23645', BLUE = '#2962ff', GREEN = '#089981', RED = '#f23645';
 const VOL_UP = 'rgba(38, 166, 154, 0.5)', VOL_DOWN = 'rgba(239, 83, 80, 0.5)';
@@ -41,6 +42,7 @@ const state = {
 };
 const ticket = { side: 'buy', type: 'market', price: null, tpOn: false, slOn: false, tp: null, sl: null };
 let toolbarState = prefs.toolbar || {};
+const recPrefs = { area: prefs.recArea || 'chart', fps: prefs.recFps || 60, scale: prefs.recScale || 1 };
 
 function loadPrefs() {
   try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { return {}; }
@@ -51,6 +53,7 @@ function savePrefs() {
       symbol: state.symbol, interval: state.interval, chartType: state.chartType, favorites: state.favorites,
       indicators: indicators.list.map(i => ({ type: i.type, params: i.params })), volume: state.volumeVisible,
       rightView: state.rightView, bottomOpen: state.bottomOpen, toolbar: toolbarState, watermark: state.watermark,
+      recArea: recPrefs.area, recFps: recPrefs.fps, recScale: recPrefs.scale,
     }));
   } catch { /* 忽略 */ }
 }
@@ -210,7 +213,7 @@ const watermark = createTextWatermark(chart.panes()[0], { horzAlign: 'center', v
 function updateWatermark() {
   const text = displaySymbol(state.symbol || 'BTCUSDT');
   const w = chart.timeScale().width() || 800;
-  const big = Math.round(Math.max(48, Math.min(150, (w * 0.62) / (text.length * 0.62))));
+  const big = Math.round(Math.max(40, Math.min(110, (w * 0.45) / (text.length * 0.62))));
   const iv = INTERVALS.find(i => i.id === state.interval);
   watermark.applyOptions({
     visible: state.watermark,
@@ -675,6 +678,7 @@ function renderFloatTb(d) {
     <span class="ft-grip" title="拖曳"><svg viewBox="0 0 8 18" width="8" height="18"><g fill="currentColor"><circle cx="2" cy="4" r="1"/><circle cx="6" cy="4" r="1"/><circle cx="2" cy="9" r="1"/><circle cx="6" cy="9" r="1"/><circle cx="2" cy="14" r="1"/><circle cx="6" cy="14" r="1"/></g></svg></span>
     ${hasColor ? `<button class="ft-btn ${ftbPop === 'color' ? 'open' : ''}" data-pop="color" title="顏色">${swatch(d.color)}</button>` : ''}
     ${d.type === 'text' ? `<button class="ft-btn ${ftbPop === 'size' ? 'open' : ''}" data-pop="size" title="字體大小">${d.size}</button>` : ''}
+    ${d.type === 'long' || d.type === 'short' ? `<button class="ft-btn ${ftbPop === 'lsize' ? 'open' : ''}" data-pop="lsize" title="標籤字體大小"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M8 8.5h9v2h-1v-1h-2.5v9H15v1h-5v-1h1.5v-9H9v1H8zM17.5 13.5h5v1h-2v5h1v1h-3v-1h1v-5h-2z"/></svg><span>${d.labelSize ?? 11}</span></button>` : ''}
     ${hasWidth ? `<button class="ft-btn ${ftbPop === 'width' ? 'open' : ''}" data-pop="width" title="線寬"><svg viewBox="0 0 28 28" width="28" height="28"><path stroke="currentColor" stroke-width="${d.width}" d="M6 14h16"/></svg><span>${d.width}px</span></button>` : ''}
     ${lineStyle ? `<button class="ft-btn ${ftbPop === 'style' ? 'open' : ''}" data-pop="style" title="線條樣式">${styleIcon(d.style)}</button>` : ''}
     ${d.type === 'long' || d.type === 'short' ? `<button class="ft-btn ${d.hideStats ? '' : 'on'}" data-act="stats" title="${d.hideStats ? '一直顯示數據標籤' : '只在選取時顯示數據標籤'}"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M6.5 8.5h15v8h-6l-3 3v-3h-6zM10 12.5h8"/></svg><span>數據</span></button>` : ''}
@@ -695,6 +699,7 @@ function renderFloatTb(d) {
 function popHtml(d) {
   if (ftbPop === 'color') return `<div class="ft-pop"><div class="ft-colors">${PALETTE.map(c => `<button data-color="${c}" class="${c === d.color ? 'on' : ''}" style="background:${c}"></button>`).join('')}</div></div>`;
   if (ftbPop === 'width') return `<div class="ft-pop ft-list">${[1, 2, 3, 4].map(w => `<button data-width="${w}" class="${w === d.width ? 'on' : ''}"><svg viewBox="0 0 40 10" width="40" height="10"><path stroke="currentColor" stroke-width="${w}" d="M2 5h36"/></svg>${w}px</button>`).join('')}</div>`;
+  if (ftbPop === 'lsize') return `<div class="ft-pop ft-list">${[9, 10, 11, 12, 13, 14].map(s => `<button data-lsize="${s}" class="${s === (d.labelSize ?? 11) ? 'on' : ''}">${s}${s === 11 ? '（預設）' : ''}</button>`).join('')}</div>`;
   if (ftbPop === 'size') return `<div class="ft-pop ft-list">${[10, 12, 14, 16, 20, 24, 28, 40].map(s => `<button data-size="${s}" class="${s === d.size ? 'on' : ''}">${s}</button>`).join('')}</div>`;
   if (ftbPop === 'style') return `<div class="ft-pop ft-list">${[['solid', '實線'], ['dashed', '虛線'], ['dotted', '點線']].map(([s, n]) => `<button data-style="${s}" class="${(d.style || 'solid') === s ? 'on' : ''}"><svg viewBox="0 0 40 10" width="40" height="10"><path stroke="currentColor" stroke-width="2" ${s === 'dashed' ? 'stroke-dasharray="5 3"' : s === 'dotted' ? 'stroke-dasharray="1.5 3" stroke-linecap="round"' : ''} d="M2 5h36"/></svg>${n}</button>`).join('')}</div>`;
   return '';
@@ -711,7 +716,7 @@ ftb.addEventListener('pointerdown', e => {
 ftb.addEventListener('click', e => {
   const d = drawings.selected;
   if (!d) return;
-  const t = e.target.closest('[data-pop],[data-act],[data-color],[data-width],[data-style],[data-size]');
+  const t = e.target.closest('[data-pop],[data-act],[data-color],[data-width],[data-style],[data-size],[data-lsize]');
   if (!t) return;
   if (t.dataset.pop) { ftbPop = ftbPop === t.dataset.pop ? null : t.dataset.pop; renderFloatTb(d); return; }
   if (t.dataset.act === 'delete') { drawings.deleteSelected(); return; }
@@ -723,6 +728,7 @@ ftb.addEventListener('click', e => {
   if (t.dataset.width) drawings.setStyle({ width: +t.dataset.width });
   if (t.dataset.style) drawings.setStyle({ style: t.dataset.style });
   if (t.dataset.size) drawings.setStyle({ size: +t.dataset.size });
+  if (t.dataset.lsize) drawings.setStyle({ labelSize: +t.dataset.lsize });
 });
 
 // ================= 右鍵選單 =================
@@ -1253,27 +1259,83 @@ function tick() {
 
 // ================= 止盈 / 止損 觸發特效 =================
 function hitFx({ reason, price, time, sub }) {
-  // 等這一幀的 K 線畫上去之後再定位
-  requestAnimationFrame(() => {
+  // 等這一幀的 K 線和標籤畫上去之後再定位
+  requestAnimationFrame(() => requestAnimationFrame(() => {
     const H = chart.panes()[0].getHeight(), W = chart.timeScale().width();
     const t = time ?? state.bars[state.bars.length - 1]?.time;
     let x = t != null ? drawings.toX(t) : null;
     let y = mainSeries.priceToCoordinate(price);
     if (x == null || y == null) return;
-    x = Math.max(80, Math.min(W - 80, x));
-    y = Math.max(70, Math.min(H - 20, y));
+    x = Math.max(10, Math.min(W - 10, x));
+    y = Math.max(10, Math.min(H - 10, y));
     const tp = reason === '止盈';
     const el = document.createElement('div');
     el.className = `hit-fx ${tp ? 'tp' : 'sl'}`;
+    el.dataset.born = performance.now();
     el.style.left = `${x}px`;
     el.style.top = `${y}px`;
+    el.style.visibility = 'hidden';
     const dots = Array.from({ length: 14 }, (_, i) =>
       `<i class="hf-dot" style="--a:${i * (360 / 14) + Math.random() * 16 - 8}deg;--d:${45 + Math.random() * 45}px"></i>`).join('');
     el.innerHTML = `<i class="hf-ring"></i><i class="hf-ring r2"></i>${dots}
       <div class="hf-label"><b>${tp ? '止盈' : '止損'}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
     wrap.appendChild(el);
+    placeHitLabel(el.querySelector('.hf-label'), x, y, W, H);
+    el.style.visibility = '';
+    // 特效黏在觸發的那根 K 線與價位上，圖表捲動（例如加速播放）時跟著移動
+    const follow = () => {
+      if (!el.isConnected) return;
+      const fx = drawings.toX(t), fy = mainSeries.priceToCoordinate(price);
+      if (fx != null && fy != null) {
+        el.style.left = `${fx}px`;
+        el.style.top = `${fy}px`;
+        el.style.display = fx < -150 || fx > chart.timeScale().width() + 150 ? 'none' : '';
+      }
+      requestAnimationFrame(follow);
+    };
+    requestAnimationFrame(follow);
     setTimeout(() => el.remove(), 2200);
+  }));
+}
+
+// 圖上已經有字的地方（部位框標籤、交易線標籤、圖例、其他特效、重播控制列）
+function occupiedRects(except) {
+  const wr = wrap.getBoundingClientRect();
+  const rel = el => { const r = el.getBoundingClientRect(); return { x: r.left - wr.left, y: r.top - wr.top, w: r.width, h: r.height }; };
+  const rects = [...(drawings.labelRects || [])];
+  $$('#tradeOverlay .tl, #legend .lg-row, #lgIndicators:not(.collapsed) .lg-ind, #lgCollapse, #paneLegends .lg-ind').forEach(el => {
+    if (el.offsetParent) rects.push(rel(el));
   });
+  // 還看得到的特效（快淡出的就不算）
+  $$('.hit-fx').forEach(fx => {
+    const label = fx.querySelector('.hf-label');
+    if (label !== except && performance.now() - +fx.dataset.born < 1500) rects.push(rel(label));
+  });
+  if (!replay.bar.hidden && replay.bar.parentElement === wrap) rects.push(rel(replay.bar));
+  return rects;
+}
+
+// 在觸發點周圍挑一個不會蓋到其他字、也不會超出圖表的位置放「止盈／止損」字樣
+function placeHitLabel(label, x, y, W, H) {
+  const w = label.offsetWidth, h = label.offsetHeight;
+  const FLOAT = 20, PAD = 6;        // 字淡出時會往上飄，上方多留一點空間
+  const rects = occupiedRects(label);
+  const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  // 先找觸發點旁邊，再往外找（右、上、下、左…）
+  const cands = [[1, 0], [1, -1], [1, 1], [0, -1], [0, 1], [-1, 0], [-1, -1], [-1, 1]];
+  for (const k of [2, 3]) cands.push([k, 0], [-k, 0], [0, -k], [0, k], [k, -k], [-k, -k], [k, k], [-k, k]);
+  let best = null;
+  for (const [sx, sy] of cands) {
+    const cx = sx * (w / 2 + 26), cy = sy * (h / 2 + 24);
+    const r = { x: x + cx - w / 2 - PAD, y: y + cy - h / 2 - FLOAT - PAD, w: w + PAD * 2, h: h + FLOAT + PAD * 2 };
+    let cost = rects.reduce((sum, o) => sum + overlap(r, o), 0);
+    const out = Math.max(0, -r.x) + Math.max(0, r.x + r.w - W) + Math.max(0, -r.y) + Math.max(0, r.y + r.h - H);
+    cost += out * 1000;
+    if (!best || cost < best.cost) best = { cx, cy, cost };
+    if (cost === 0) break;
+  }
+  label.style.left = `${best.cx}px`;
+  label.style.top = `${best.cy}px`;
 }
 
 // 部位框（多頭/空頭部位）在 K 線更新後剛好碰到止盈或止損時跳特效
@@ -1362,6 +1424,69 @@ $('#replayBtn').onclick = () => {
   else replay.startPick();
 };
 
+// ================= 錄影 =================
+function renderRecMenu() {
+  $$('#recMenu [data-area]').forEach(b => b.classList.toggle('on', b.dataset.area === recPrefs.area));
+  $$('#recMenu [data-fps]').forEach(b => b.classList.toggle('on', +b.dataset.fps === recPrefs.fps));
+  $$('#recMenu [data-scale]').forEach(b => b.classList.toggle('on', +b.dataset.scale === recPrefs.scale));
+}
+// 只錄圖表區時，把重播控制列暫時移到圖表外面，這樣按播放/暫停時控制列不會被錄進影片
+function placeReplayBar(detach) {
+  const bar = replay.bar;
+  if (detach) {
+    const r = wrap.getBoundingClientRect();
+    document.body.appendChild(bar);
+    bar.classList.add('detached');
+    bar.style.left = `${r.left + r.width / 2}px`;
+    bar.style.top = `${r.bottom - 44 - 44}px`;
+  } else if (bar.parentElement !== wrap) {
+    wrap.appendChild(bar);
+    bar.classList.remove('detached');
+    bar.style.left = bar.style.top = '';
+  }
+}
+const recorder = new Recorder({
+  getTarget: () => wrap,
+  fileName: () => {
+    const d = new Date();
+    return `${displaySymbol(state.symbol)}_${INTERVALS.find(i => i.id === state.interval).legend}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  },
+  toast,
+  onState: st => {
+    const btn = $('#recBtn');
+    btn.classList.toggle('on', st.recording);
+    document.body.classList.toggle('recording', st.recording);
+    if (st.recording) {
+      const t = Math.floor(st.elapsed || 0);
+      $('#recText').textContent = `${pad(Math.floor(t / 60))}:${pad(t % 60)} 停止`;
+      btn.title = '停止錄影並下載影片';
+      if (st.areaMode === 'element' && !replay.bar.classList.contains('detached')) placeReplayBar(true);
+    } else {
+      $('#recText').textContent = '錄影';
+      btn.title = '錄影（錄下圖表畫面，停止後自動下載影片）';
+      placeReplayBar(false);
+    }
+  },
+});
+$('#recBtn').onclick = e => {
+  e.stopPropagation();
+  if (recorder.recording) { recorder.stop(); return; }
+  renderRecMenu();
+  $('#recMenu').classList.toggle('open');
+};
+$('#recMenu').addEventListener('click', e => {
+  const a = e.target.closest('[data-area]'), f = e.target.closest('[data-fps]'), q = e.target.closest('[data-scale]');
+  if (a) recPrefs.area = a.dataset.area;
+  if (f) recPrefs.fps = +f.dataset.fps;
+  if (q) recPrefs.scale = +q.dataset.scale;
+  if (a || f || q) { renderRecMenu(); savePrefs(); }
+});
+$('#recStart').onclick = () => {
+  $('#recMenu').classList.remove('open');
+  recorder.start({ area: recPrefs.area, fps: recPrefs.fps, scale: recPrefs.scale });
+};
+window.addEventListener('resize', () => { if (replay.bar.classList.contains('detached')) placeReplayBar(true); });
+
 // ================= 提示 =================
 function toast(title, text, kind = 'info') {
   const el = document.createElement('div');
@@ -1387,4 +1512,4 @@ renderLegend();
 positionScaleWidgets();
 startTickers();
 // 除錯用（瀏覽器主控台可以操作）
-window.__tv = { chart, replay, state, drawings, get broker() { return broker; } };
+window.__tv = { chart, replay, state, drawings, recorder, get broker() { return broker; } };

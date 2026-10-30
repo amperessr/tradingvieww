@@ -38,6 +38,23 @@
     <div class="tb-sep"></div>
     <button class="tb-btn soon" title="建立快訊"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M20.5 14a6.5 6.5 0 1 1-6.5-6.5M14 10.5V14l2 2M7 7.5l2-2M19 5.5v5M16.5 8h5"/></svg><span>快訊</span></button>
     <button class="tb-btn" id="replayBtn" title="K線重播（選擇起點後逐根播放）"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M13.5 19.5v-11l-6 5.5 6 5.5ZM20.5 19.5v-11l-6 5.5 6 5.5Z"/></svg><span>重播</span></button>
+    <div class="tb-dropdown" id="recWrap">
+      <button class="tb-btn tb-rec" id="recBtn" title="錄影（錄下圖表畫面，停止後自動下載影片）"><i class="rec-dot"></i><span id="recText">錄影</span></button>
+      <div class="dd-menu rec-menu" id="recMenu">
+        <div class="dd-sec">錄影範圍</div>
+        <button class="dd-item" data-area="chart">只錄圖表區（建議）<span class="dd-check">✓</span></button>
+        <button class="dd-item" data-area="page">錄整個頁面<span class="dd-check">✓</span></button>
+        <div class="dd-sec">畫質</div>
+        <button class="dd-item" data-scale="1">標準（和畫面一樣大）<span class="dd-check">✓</span></button>
+        <button class="dd-item" data-scale="2">高畫質（2 倍，檔案較大）<span class="dd-check">✓</span></button>
+        <div class="dd-sec">畫面更新率</div>
+        <button class="dd-item" data-fps="60">60 fps（流暢）<span class="dd-check">✓</span></button>
+        <button class="dd-item" data-fps="30">30 fps（檔案較小）<span class="dd-check">✓</span></button>
+        <div class="ctx-sep"></div>
+        <button class="rec-start" id="recStart"><i class="rec-dot"></i>開始錄影</button>
+        <div class="rec-note">按下後瀏覽器會詢問要分享哪個畫面，請選「這個分頁」。<br>再按一次上方的紅色按鈕就會停止，影片會自動下載。</div>
+      </div>
+    </div>
     <div class="tb-sep"></div>
     <button class="tb-btn tb-icon" id="undoBtn" title="復原 Ctrl+Z"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M9.5 12.5h9a4 4 0 0 1 0 8h-3M12.5 8.5l-4 4 4 4"/></svg></button>
     <button class="tb-btn tb-icon" id="redoBtn" title="重做 Ctrl+Y"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M18.5 12.5h-9a4 4 0 0 0 0 8h3M15.5 8.5l4 4-4 4"/></svg></button>

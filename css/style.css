@@ -108,7 +108,7 @@ input { font: inherit; color: inherit; }
 
 /* ===== 圖表 ===== */
 #center { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
-#chartwrap { position: relative; flex: 1; min-height: 120px; }
+#chartwrap { position: relative; flex: 1; min-height: 120px; isolation: isolate; }
 #chart { position: absolute; inset: 0; }
 #chartwrap.cursor-draw, #chartwrap.cursor-draw * { cursor: crosshair !important; }
 #chartwrap.cursor-dot canvas { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Ccircle cx='6' cy='6' r='2.5' fill='%23dbdbdb'/%3E%3C/svg%3E") 6 6, default !important; }
@@ -464,14 +464,14 @@ input { font: inherit; color: inherit; }
   background: var(--c2); box-shadow: 0 0 8px var(--c2); animation: hfDot .95s ease-out forwards;
 }
 .hit-fx .hf-label {
-  position: absolute; left: 0; bottom: 20px; display: flex; flex-direction: column; align-items: center; gap: 1px;
-  padding: 6px 18px 7px; border-radius: 10px; white-space: nowrap; color: #fff;
+  position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 4px 14px 5px; border-radius: 8px; white-space: nowrap; color: #fff;
   background: linear-gradient(180deg, var(--c2), var(--c));
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .28), 0 0 26px var(--c), 0 8px 24px rgba(0, 0, 0, .55);
   animation: hfPop 2s cubic-bezier(.2, .9, .3, 1.2) forwards;
 }
-.hit-fx .hf-label b { display: block; font-size: 30px; font-weight: 800; letter-spacing: 6px; margin-right: -6px; line-height: 1.15; text-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
-.hit-fx .hf-label span { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hit-fx .hf-label b { display: block; font-size: 22px; font-weight: 800; letter-spacing: 4px; margin-right: -4px; line-height: 1.15; text-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.hit-fx .hf-label span { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .hit-fx.sl .hf-label b { animation: hfShake .45s .12s; }
 @keyframes hfRing { 0% { transform: scale(.2); opacity: 1; } 100% { transform: scale(2.8); opacity: 0; } }
 @keyframes hfDot {
@@ -479,10 +479,29 @@ input { font: inherit; color: inherit; }
   100% { transform: rotate(var(--a)) translateX(var(--d)) scale(.2); opacity: 0; }
 }
 @keyframes hfPop {
-  0% { transform: translateX(-50%) scale(.3); opacity: 0; }
-  12% { transform: translateX(-50%) scale(1.18); opacity: 1; }
-  22% { transform: translateX(-50%) scale(1); }
-  75% { transform: translateX(-50%) translateY(-14px); opacity: 1; }
-  100% { transform: translateX(-50%) translateY(-36px); opacity: 0; }
+  0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; }
+  12% { transform: translate(-50%, -50%) scale(1.18); opacity: 1; }
+  22% { transform: translate(-50%, -50%) scale(1); }
+  75% { transform: translate(-50%, calc(-50% - 14px)); opacity: 1; }
+  100% { transform: translate(-50%, calc(-50% - 36px)); opacity: 0; }
 }
 @keyframes hfShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
+
+/* ===== 錄影 ===== */
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #f23645; display: inline-block; flex: none; }
+.tb-rec.on { background: #f23645; color: #fff; }
+.tb-rec.on .rec-dot { background: #fff; animation: recBlink 1s steps(2) infinite; }
+.tb-rec.on span { font-variant-numeric: tabular-nums; }
+@keyframes recBlink { 50% { opacity: .2; } }
+.rec-menu { min-width: 280px; padding-bottom: 10px; }
+.rec-menu .dd-item .dd-check { visibility: hidden; }
+.rec-menu .dd-item.on .dd-check { visibility: visible; }
+.rec-start {
+  display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 12px 8px; width: calc(100% - 24px);
+  height: 36px; border-radius: 6px; background: #f23645; color: #fff; font-size: 14px; font-weight: 600;
+}
+.rec-start:hover { background: #d9303e; }
+.rec-start .rec-dot { background: #fff; }
+.rec-note { padding: 0 14px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+body.recording .ps-plus { display: none !important; }
+.replay-bar.detached { position: fixed; transform: translateX(-50%); }

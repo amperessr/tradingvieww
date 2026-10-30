@@ -568,6 +568,7 @@ export class Drawings {
 
   // ================= 繪製 =================
   _render(ctx, size) {
+    this.labelRects = [];   // 這一幀畫出來的標籤位置（觸發特效會避開它們）
     ctx.save();
     ctx.font = `12px ${FONT}`;
     ctx.textBaseline = 'middle';
@@ -815,7 +816,7 @@ export class Drawings {
       lines.push(`成交量 ${this.fmtVol(vol)}`);
     }
     const ly = (kind === 'daterange' ? B.y >= A.y : !down) ? yt - 8 - lines.length * 9 : yb + 8 + lines.length * 9;
-    box(ctx, (xl + xr) / 2, ly, lines, color);
+    this.labelRects?.push(box(ctx, (xl + xr) / 2, ly, lines, color));
   }
 
   _posState(d) {
@@ -891,12 +892,14 @@ export class Drawings {
     const signed = v => `${v < 0 ? '−' : ''}${this.fmt(Math.abs(v))}`;
     const cx = x1 + w / 2;
     const top = Math.min(yT, yS), bottom = Math.max(yT, yS);
-    const tY = long ? top - 13 : bottom + 13, sY = long ? bottom + 13 : top - 13;
-    box(ctx, cx, tY, [`目標：${this.fmt(reward)} (${pct(reward)}%) ${ticks(reward)}, 金額：${+(POS_ACCOUNT + qty * reward).toFixed(2)}`], GREEN);
-    box(ctx, cx, sY, [`停損：${this.fmt(risk)} (${pct(risk)}%) ${ticks(risk)}, 金額：${+(POS_ACCOUNT - qty * risk).toFixed(2)}`], RED);
+    const fs = d.labelSize ?? 11;                 // 標籤字體大小（浮動工具列可調）
+    const gap = Math.round(fs * 0.65) + 4;
+    const tY = long ? top - gap : bottom + gap, sY = long ? bottom + gap : top - gap;
+    this.labelRects.push(box(ctx, cx, tY, [`目標：${this.fmt(reward)} (${pct(reward)}%) ${ticks(reward)}, 金額：${+(POS_ACCOUNT + qty * reward).toFixed(2)}`], GREEN, false, fs));
+    this.labelRects.push(box(ctx, cx, sY, [`停損：${this.fmt(risk)} (${pct(risk)}%) ${ticks(risk)}, 金額：${+(POS_ACCOUNT - qty * risk).toFixed(2)}`], RED, false, fs));
     const first = !st.open ? `等待進場：${this.fmt(d.entry)}, 數量：${num(qty, 3)}`
       : `${st.close ? '已平倉盈虧' : '未平倉盈虧'}：${signed(pnl)}, 數量：${num(qty, 3)}`;
-    box(ctx, cx, yE, [first, `風險/報酬比：${num(reward / risk)}`], !st.open ? '#5d606b' : pnl >= 0 ? GREEN : RED, d === this.selected);
+    this.labelRects.push(box(ctx, cx, yE, [first, `風險/報酬比：${num(reward / risk)}`], !st.open ? '#5d606b' : pnl >= 0 ? GREEN : RED, d === this.selected, fs));
   }
 
   _drawHandles(ctx, d) {
@@ -960,11 +963,11 @@ function migrate(d) {
   for (const [k, v] of Object.entries(DEFAULTS[d.type] || {})) d[k] ??= v;
 }
 
-function box(ctx, cx, cy, lines, bg, border = false) {
-  ctx.font = `12px ${FONT}`;
-  const padX = 8, lh = 16;
+function box(ctx, cx, cy, lines, bg, border = false, size = 12) {
+  ctx.font = `${size}px ${FONT}`;
+  const padX = Math.round(size * 0.55), lh = Math.round(size * 1.3);
   const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + padX * 2;
-  const h = lines.length * lh + 6;
+  const h = lines.length * lh + 4;
   const x = cx - w / 2, y = cy - h / 2;
   ctx.fillStyle = bg;
   ctx.beginPath();
@@ -974,7 +977,8 @@ function box(ctx, cx, cy, lines, bg, border = false) {
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  lines.forEach((l, i) => ctx.fillText(l, cx, y + 3 + lh / 2 + i * lh + 0.5));
+  lines.forEach((l, i) => ctx.fillText(l, cx, y + 2 + lh / 2 + i * lh + 0.5));
+  return { x, y, w, h };
 }
 
 function tag(ctx, cx, cy, text, bg) {
