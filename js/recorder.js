@@ -27,7 +27,7 @@ export class Recorder {
     return !!navigator.mediaDevices?.getDisplayMedia && typeof MediaRecorder !== 'undefined';
   }
 
-  async start({ area = 'chart', fps = 60, scale = 1 } = {}) {
+  async start({ area = 'chart', fps = 30, scale = 1 } = {}) {
     if (this.recording) return;
     if (!this.supported) {
       this.toast('無法錄影', '這個瀏覽器不支援分頁錄影，請改用最新版的 Chrome 或 Edge', 'err');

@@ -42,7 +42,8 @@ const state = {
 };
 const ticket = { side: 'buy', type: 'market', price: null, tpOn: false, slOn: false, tp: null, sl: null };
 let toolbarState = prefs.toolbar || {};
-const recPrefs = { area: prefs.recArea || 'chart', fps: prefs.recFps || 60, scale: prefs.recScale || 1 };
+// 錄影固定 30 fps、標準畫質（和畫面一樣大），只讓使用者選範圍
+const recPrefs = { area: prefs.recArea || 'chart', fps: 30, scale: 1 };
 
 function loadPrefs() {
   try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { return {}; }
@@ -53,7 +54,7 @@ function savePrefs() {
       symbol: state.symbol, interval: state.interval, chartType: state.chartType, favorites: state.favorites,
       indicators: indicators.list.map(i => ({ type: i.type, params: i.params })), volume: state.volumeVisible,
       rightView: state.rightView, bottomOpen: state.bottomOpen, toolbar: toolbarState, watermark: state.watermark,
-      recArea: recPrefs.area, recFps: recPrefs.fps, recScale: recPrefs.scale,
+      recArea: recPrefs.area,
     }));
   } catch { /* 忽略 */ }
 }
@@ -1427,8 +1428,6 @@ $('#replayBtn').onclick = () => {
 // ================= 錄影 =================
 function renderRecMenu() {
   $$('#recMenu [data-area]').forEach(b => b.classList.toggle('on', b.dataset.area === recPrefs.area));
-  $$('#recMenu [data-fps]').forEach(b => b.classList.toggle('on', +b.dataset.fps === recPrefs.fps));
-  $$('#recMenu [data-scale]').forEach(b => b.classList.toggle('on', +b.dataset.scale === recPrefs.scale));
 }
 // 只錄圖表區時，把重播控制列暫時移到圖表外面，這樣按播放/暫停時控制列不會被錄進影片
 function placeReplayBar(detach) {
@@ -1475,11 +1474,8 @@ $('#recBtn').onclick = e => {
   $('#recMenu').classList.toggle('open');
 };
 $('#recMenu').addEventListener('click', e => {
-  const a = e.target.closest('[data-area]'), f = e.target.closest('[data-fps]'), q = e.target.closest('[data-scale]');
-  if (a) recPrefs.area = a.dataset.area;
-  if (f) recPrefs.fps = +f.dataset.fps;
-  if (q) recPrefs.scale = +q.dataset.scale;
-  if (a || f || q) { renderRecMenu(); savePrefs(); }
+  const a = e.target.closest('[data-area]');
+  if (a) { recPrefs.area = a.dataset.area; renderRecMenu(); savePrefs(); }
 });
 $('#recStart').onclick = () => {
   $('#recMenu').classList.remove('open');
