@@ -66,8 +66,10 @@ export class Broker extends EventTarget {
   price(symbol) { return this.prices[symbol]; }
 
   // ---------- 下單 ----------
-  placeOrder({ symbol, side, type, qty, price, tp, sl }) {
+  // leverage：槓桿倍數（預設 1）；保證金 = 倉位價值 ÷ 槓桿
+  placeOrder({ symbol, side, type, qty, price, tp, sl, leverage = 1 }) {
     qty = +qty;
+    leverage = Math.max(1, +leverage || 1);
     if (!(qty > 0)) return this._reject('數量無效');
     const last = this.prices[symbol];
     if (last == null) return this._reject('尚未取得報價');
@@ -77,7 +79,7 @@ export class Broker extends EventTarget {
 
     const order = {
       id: this.seq++, symbol, side, type, qty, price: type === 'market' ? null : +price,
-      tp: tp ?? null, sl: sl ?? null, status: '工作中', created: Date.now(),
+      tp: tp ?? null, sl: sl ?? null, leverage, status: '工作中', created: Date.now(),
     };
     if (type === 'market') {
       this._fill(order, last);
@@ -164,8 +166,10 @@ export class Broker extends EventTarget {
     if (p) {
       const long = p.side === 'buy';
       let exit = null, why = '';
+      const liq = liqPrice(p);
       if (p.tp != null && (long ? last >= p.tp : last <= p.tp)) { exit = p.tp; why = '止盈'; }
       else if (p.sl != null && (long ? last <= p.sl : last >= p.sl)) { exit = p.sl; why = '止損'; }
+      else if (liq != null && (long ? last <= liq : last >= liq)) { exit = liq; why = '強平'; }
       if (exit != null) {
         const o = { id: this.seq++, symbol, side: long ? 'sell' : 'buy', type: why === '止盈' ? 'limit' : 'stop', qty: p.qty, price: exit, tp: null, sl: null, created: Date.now(), reason: why };
         this._fill(o, exit);
@@ -182,23 +186,31 @@ export class Broker extends EventTarget {
     this.history.unshift(order);
 
     const { symbol, side, qty } = order;
+    const lev = order.leverage || 1;
     const p = this.positions[symbol];
-    let pnl = 0;
+    let pnl = 0, closedMargin = 0;
     if (!p) {
-      this.positions[symbol] = { symbol, side, qty, avg: fillPrice, tp: order.tp, sl: order.sl, openTime: Date.now() };
+      this.positions[symbol] = { symbol, side, qty, avg: fillPrice, tp: order.tp, sl: order.sl, leverage: lev, margin: (qty * fillPrice) / lev, openTime: Date.now() };
     } else if (p.side === side) {
+      p.margin = posMargin(p) + (qty * fillPrice) / lev;
       p.avg = (p.avg * p.qty + fillPrice * qty) / (p.qty + qty);
       p.qty = round8(p.qty + qty);
+      p.leverage = (p.qty * p.avg) / p.margin;
       if (order.tp != null) p.tp = order.tp;
       if (order.sl != null) p.sl = order.sl;
     } else {
       const closeQty = Math.min(p.qty, qty);
       pnl = (fillPrice - p.avg) * closeQty * (p.side === 'buy' ? 1 : -1);
+      closedMargin = posMargin(p) * (closeQty / p.qty);
+      // 強平：最多賠掉這筆保證金
+      if (order.reason === '強平') pnl = -closedMargin;
+      p.margin = posMargin(p) - closedMargin;
       const rest = round8(qty - closeQty);
       p.qty = round8(p.qty - closeQty);
       if (p.qty <= 0) delete this.positions[symbol];
-      if (rest > 0) this.positions[symbol] = { symbol, side, qty: rest, avg: fillPrice, tp: order.tp, sl: order.sl, openTime: Date.now() };
+      if (rest > 0) this.positions[symbol] = { symbol, side, qty: rest, avg: fillPrice, tp: order.tp, sl: order.sl, leverage: lev, margin: (rest * fillPrice) / lev, openTime: Date.now() };
     }
+    order.roe = closedMargin ? (pnl / closedMargin) * 100 : null;
     order.pnl = pnl;
     this.realized += pnl;
     this.balance += pnl;
@@ -209,7 +221,7 @@ export class Broker extends EventTarget {
     this._log(`${what}${sideText(side)} ${qty} ${symbol} 成交於 ${px}${pnlText}`);
     this._notify(order.reason ? `${order.reason}已觸發` : '訂單已成交',
       `${sideText(side)} ${qty} ${symbol} @ ${px}${pnlText}`, pnl < 0 ? 'err' : 'ok');
-    if (order.reason) this.dispatchEvent(new CustomEvent('hit', { detail: { symbol, reason: order.reason, price: fillPrice, pnl } }));
+    if (order.reason) this.dispatchEvent(new CustomEvent('hit', { detail: { symbol, reason: order.reason, price: fillPrice, pnl, roe: order.roe } }));
   }
 
   // ---------- 帳戶統計 ----------
@@ -220,11 +232,17 @@ export class Broker extends EventTarget {
     return (last - p.avg) * p.qty * (p.side === 'buy' ? 1 : -1);
   }
 
+  // 收益率（ROE）：未實現損益 ÷ 保證金
+  roe(symbol) {
+    const p = this.positions[symbol];
+    return p ? (this.unrealized(symbol) / posMargin(p)) * 100 : 0;
+  }
+
   summary() {
     let unrealized = 0, margin = 0;
     for (const s in this.positions) {
       unrealized += this.unrealized(s);
-      margin += this.positions[s].qty * (this.prices[s] ?? this.positions[s].avg);
+      margin += posMargin(this.positions[s]);
     }
     const equity = this.balance + unrealized;
     return { balance: this.balance, equity, realized: this.realized, unrealized, margin, available: equity - margin };
@@ -247,5 +265,13 @@ function shouldTrigger(o, last) {
 }
 
 const round8 = x => Math.round(x * 1e8) / 1e8;
+// 舊資料沒有保證金欄位時，當作 1 倍槓桿
+export const posMargin = p => p.margin ?? p.qty * p.avg;
+// 強平價（簡化：不計維持保證金率）；1 倍槓桿不會被強平
+export function liqPrice(p) {
+  const lev = p.leverage ?? 1;
+  if (lev <= 1.0001) return null;
+  return p.side === 'buy' ? p.avg * (1 - 1 / lev) : p.avg * (1 + 1 / lev);
+}
 export const sideText = s => (s === 'buy' ? '買入' : '賣出');
 export const typeText = t => ({ market: '市價', limit: '限價', stop: '停損' }[t]);

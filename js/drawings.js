@@ -10,8 +10,8 @@ const FIB_LEVELS = [
   { v: 2.618, c: RED }, { v: 3.618, c: '#9c27b0' }, { v: 4.236, c: '#e91e63' },
 ];
 const FIB_TIME = [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144];
-const POS_ACCOUNT = 1000;   // TradingView 部位工具預設：帳戶 1000
-const POS_RISK = 0.25;      // 風險 25%
+const POS_MARGIN = 100;     // 部位工具預設：本金 100 USDT
+const POS_LEVERAGE = 10;    // 槓桿 10 倍
 const STORE_KEY = 'fake-tv-drawings-v1';
 
 // 各工具需要幾個點
@@ -185,7 +185,7 @@ export class Drawings {
 
   // ================= 事件 =================
   _bindEvents() {
-    const ignore = e => e.target.closest?.('.tl, #legend, #paneLegends .lg-ind, .ctx-menu, .float-tb, .txt-editor, .ps-gear, .ps-cur, .ps-plus');
+    const ignore = e => e.target.closest?.('.tl, #legend, #paneLegends .lg-ind, .ctx-menu, .float-tb, .txt-editor, .ps-gear, .ps-cur, .ps-plus, .lev-pop');
     const block = e => { e.stopPropagation(); e.preventDefault(); this._swallow = true; };
 
     this.wrap.addEventListener('pointerdown', e => {
@@ -294,6 +294,9 @@ export class Drawings {
       const risk = Math.abs(this.series.coordinateToPrice(y) - this.series.coordinateToPrice(y + h * 0.08));
       const dir = type === 'long' ? 1 : -1;
       Object.assign(d, { t1: pt.t, t2: pt.t + 30 * this.getStep(), entry: pt.price, sl: this._round(pt.price - dir * risk), tp: this._round(pt.price + dir * risk) });
+      const tr = this.getTrade?.() ?? {};
+      d.margin = tr.margin ?? POS_MARGIN;
+      d.leverage = tr.leverage ?? POS_LEVERAGE;
       // 放在最新 K 線上或右邊的空白處（例如重播時）：只看之後才出現的 K 線，價格碰到進場價才算開倉
       const bars = this.getBars();
       if (bars.length && pt.t >= bars[bars.length - 1].time) d.after = bars[bars.length - 1].time;
@@ -828,18 +831,35 @@ export class Drawings {
     const end = after != null ? bars.length - 1 : Math.min(bars.length - 1, Math.floor((d.t2 - base) / step));
     const i0 = Math.max(0, Math.ceil((d.t1 - base) / step), after != null ? Math.floor((after - base) / step) + 1 : 0);
     let open = null, close = null;
+    const liq = this.liqPrice(d);
+    const stop = liq == null ? d.sl : long ? Math.max(d.sl, liq) : Math.min(d.sl, liq);
     for (let i = i0; i <= end; i++) {
       const b = bars[i];
       if (!open) {
         if (b.low <= d.entry && b.high >= d.entry) open = { t: b.time };
         else continue;
       }
-      if (long ? b.low <= d.sl : b.high >= d.sl) { close = { t: b.time, price: d.sl }; break; }
-      if (long ? b.high >= d.tp : b.low <= d.tp) { close = { t: b.time, price: d.tp }; break; }
+      if (long ? b.low <= stop : b.high >= stop) { close = { t: b.time, price: stop, kind: stop === d.sl ? 'sl' : 'liq' }; break; }
+      if (long ? b.high >= d.tp : b.low <= d.tp) { close = { t: b.time, price: d.tp, kind: 'tp' }; break; }
     }
     if (!open) return { open: null };
     const cur = close ?? { t: bars[end].time, price: bars[end].close };
     return { open, close, cur };
+  }
+
+  // 部位框的強平價（簡化：不計維持保證金率）
+  liqPrice(d) {
+    const lev = d.leverage ?? POS_LEVERAGE;
+    if (lev <= 1) return null;
+    return this._round(d.type === 'long' ? d.entry * (1 - 1 / lev) : d.entry * (1 + 1 / lev));
+  }
+
+  // 部位框的倉位數量與盈虧（USDT、收益率）
+  positionMoney(d, priceMove) {
+    const margin = d.margin ?? POS_MARGIN, lev = d.leverage ?? POS_LEVERAGE;
+    const qty = (margin * lev) / d.entry;
+    const usdt = qty * priceMove;
+    return { margin, lev, qty, usdt, roe: (usdt / margin) * 100 };
   }
 
   // 給外部用：部位框目前狀態（是否進場、是否平倉、平倉價）
@@ -883,23 +903,27 @@ export class Drawings {
 
     // 數據標籤預設一直顯示（錄影時滑鼠不在框上也看得到），可在浮動工具列關掉
     if (!active && d.hideStats) return;
-    const prec = this.getPrecision();
     const risk = Math.abs(d.entry - d.sl), reward = Math.abs(d.tp - d.entry);
-    const qty = (POS_ACCOUNT * POS_RISK) / risk;
     const num = (v, dp = 2) => v.toLocaleString('en-US', { maximumFractionDigits: dp });
-    const pct = v => ((v / d.entry) * 100).toFixed(3);
-    const ticks = v => Math.round(v / 10 ** -prec).toLocaleString('en-US');
-    const signed = v => `${v < 0 ? '−' : ''}${this.fmt(Math.abs(v))}`;
+    const money = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const pct = v => ((v / d.entry) * 100).toFixed(2);
+    const sgn = v => (v < 0 ? '−' : '+');
+    const win = this.positionMoney(d, reward), lose = this.positionMoney(d, -risk), now = this.positionMoney(d, pnl);
+    const liqFirst = lose.roe <= -100;   // 停損比強平價還遠：會先被強平
     const cx = x1 + w / 2;
     const top = Math.min(yT, yS), bottom = Math.max(yT, yS);
     const fs = d.labelSize ?? 11;                 // 標籤字體大小（浮動工具列可調）
     const gap = Math.round(fs * 0.65) + 4;
     const tY = long ? top - gap : bottom + gap, sY = long ? bottom + gap : top - gap;
-    this.labelRects.push(box(ctx, cx, tY, [`目標：${this.fmt(reward)} (${pct(reward)}%) ${ticks(reward)}, 金額：${+(POS_ACCOUNT + qty * reward).toFixed(2)}`], GREEN, false, fs));
-    this.labelRects.push(box(ctx, cx, sY, [`停損：${this.fmt(risk)} (${pct(risk)}%) ${ticks(risk)}, 金額：${+(POS_ACCOUNT - qty * risk).toFixed(2)}`], RED, false, fs));
-    const first = !st.open ? `等待進場：${this.fmt(d.entry)}, 數量：${num(qty, 3)}`
-      : `${st.close ? '已平倉盈虧' : '未平倉盈虧'}：${signed(pnl)}, 數量：${num(qty, 3)}`;
-    this.labelRects.push(box(ctx, cx, yE, [first, `風險/報酬比：${num(reward / risk)}`], !st.open ? '#5d606b' : pnl >= 0 ? GREEN : RED, d === this.selected, fs));
+    this.labelRects.push(box(ctx, cx, tY, [`目標：${this.fmt(reward)} (${pct(reward)}%)，盈利 +${money(win.usdt)} USDT (+${num(win.roe)}%)`], GREEN, false, fs));
+    this.labelRects.push(box(ctx, cx, sY, [liqFirst
+      ? `停損：${this.fmt(risk)} (${pct(risk)}%)，超過強平價 ${this.fmt(this.liqPrice(d))}，最多虧損 −${money(win.margin)} USDT`
+      : `停損：${this.fmt(risk)} (${pct(risk)}%)，虧損 −${money(-lose.usdt)} USDT (${num(lose.roe)}%)`], RED, false, fs));
+    const first = !st.open ? `等待進場：${this.fmt(d.entry)}`
+      : st.close?.kind === 'liq' ? `已強平：−${money(now.margin)} USDT (−100%)`
+      : `${st.close ? '已平倉盈虧' : '未平倉盈虧'}：${sgn(now.usdt)}${money(Math.abs(now.usdt))} USDT (${sgn(now.roe)}${num(Math.abs(now.roe))}%)`;
+    this.labelRects.push(box(ctx, cx, yE, [first, `本金 ${num(now.margin)} USDT × ${num(now.lev)} 倍，風險報酬比 ${num(reward / risk)}`],
+      !st.open ? '#5d606b' : pnl >= 0 ? GREEN : RED, d === this.selected, fs));
   }
 
   _drawHandles(ctx, d) {

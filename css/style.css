@@ -148,6 +148,13 @@ input { font: inherit; color: inherit; }
 .qt-buy:hover { background: rgba(41,98,255,.15); }
 .qt-price { font-size: 12px; font-variant-numeric: tabular-nums; }
 .qt-label { font-size: 11px; }
+.qt-lev {
+  width: 40px; height: 34px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1;
+  border-radius: 4px; color: var(--text); background: transparent;
+}
+.qt-lev:hover { background: var(--hover); }
+.qt-lev b { font-size: 11px; font-weight: 600; }
+.qt-lev span { font-size: 10px; color: var(--muted); }
 .qt-qty { width: 30px; height: 20px; text-align: center; background: transparent; border: 1px solid transparent; border-radius: 3px; outline: none; font-size: 11px; color: var(--text); padding: 0; }
 .qt-qty:hover { border-color: var(--border); }
 .qt-qty:focus { border-color: var(--blue); width: 54px; }
@@ -505,3 +512,24 @@ input { font: inherit; color: inherit; }
 .rec-note { padding: 0 14px; font-size: 12px; color: var(--muted); line-height: 1.5; }
 body.recording .ps-plus { display: none !important; }
 .replay-bar.detached { position: fixed; transform: translateX(-50%); }
+
+/* ===== 本金與槓桿 ===== */
+.lev-pop {
+  position: absolute; z-index: 30; width: 270px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-2); border: 1px solid #2e2e2e; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.55);
+}
+.lev-title { font-size: 13px; font-weight: 600; }
+.lev-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.lev-row > span:first-child { width: 32px; flex: none; }
+.lev-row .op-input { flex: 1; height: 30px; }
+.lev-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.lev-chips button { min-width: 38px; height: 24px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px; color: var(--text-2); }
+.lev-chips button:hover { background: var(--hover); color: var(--text); }
+.lev-chips button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+.lev-info { display: flex; flex-direction: column; gap: 4px; font-size: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.lev-info div { display: flex; justify-content: space-between; }
+.lev-info span { color: var(--muted); }
+.lev-info b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.ft-trade { width: 260px; display: flex; flex-direction: column; gap: 8px; }
+.ft-trade-btn span { font-size: 12px; white-space: nowrap; }
+.tb-wm.active { color: var(--blue); }

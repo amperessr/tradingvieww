@@ -3,7 +3,7 @@ import {
   ColorType, CrosshairMode, LineStyle, PriceScaleMode, createTextWatermark,
 } from '../lib/lightweight-charts.standalone.production.mjs';
 import { Datafeed, INTERVALS, FAVORITE_INTERVALS, intervalSec, SYMBOLS, symbolMeta, displaySymbol, EXCHANGE, TZ_OFFSET } from './datafeed.js';
-import { Broker, sideText, typeText } from './broker.js';
+import { Broker, sideText, typeText, posMargin, liqPrice } from './broker.js';
 import { IndicatorManager, INDICATORS } from './indicators.js';
 import { Drawings, TOOL_NAMES } from './drawings.js';
 import { TradeLines } from './tradelines.js';
@@ -39,6 +39,7 @@ const state = {
   bottomOpen: !!prefs.bottomOpen,
   indicatorsHidden: false,
   watermark: prefs.watermark !== false,
+  trade: { margin: prefs.tradeMargin ?? 100, leverage: prefs.tradeLeverage ?? 10 },   // 開倉的本金（USDT）與槓桿
 };
 const ticket = { side: 'buy', type: 'market', price: null, tpOn: false, slOn: false, tp: null, sl: null };
 let toolbarState = prefs.toolbar || {};
@@ -54,7 +55,7 @@ function savePrefs() {
       symbol: state.symbol, interval: state.interval, chartType: state.chartType, favorites: state.favorites,
       indicators: indicators.list.map(i => ({ type: i.type, params: i.params })), volume: state.volumeVisible,
       rightView: state.rightView, bottomOpen: state.bottomOpen, toolbar: toolbarState, watermark: state.watermark,
-      recArea: recPrefs.area,
+      recArea: recPrefs.area, tradeMargin: state.trade.margin, tradeLeverage: state.trade.leverage,
     }));
   } catch { /* 忽略 */ }
 }
@@ -74,12 +75,12 @@ function fmtVol(v) {
   if (a >= 1e3) return (v / 1e3).toFixed(2) + 'K';
   return a >= 10 ? String(Math.round(v)) : String(+v.toFixed(2));
 }
-function niceQty(price) {
-  const raw = 10000 / price;
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  return +(Math.round(raw / mag) * mag).toPrecision(6);
-}
-const qtyStep = q => 10 ** Math.floor(Math.log10(q || 1));
+const LEVERAGES = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125];
+const roundQty = q => +q.toPrecision(4);
+// 依目前的本金與槓桿，換算在這個價格要開多少數量
+const qtyFor = price => (price ? roundQty((state.trade.margin * state.trade.leverage) / price) : 0);
+const fmtPct = v => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`;
+const fmtUsdt = v => `${fmtUsd(v)} USDT`;
 const pad = n => String(n).padStart(2, '0');
 const WEEK = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 // 圖表時間已平移成本地時區，所以用 UTC 方法讀
@@ -212,17 +213,21 @@ mainSeries = createMainSeries();
 // 背景浮水印：目前的幣種（跟著商品/週期切換）
 const watermark = createTextWatermark(chart.panes()[0], { horzAlign: 'center', vertAlign: 'center', lines: [] });
 function updateWatermark() {
-  const text = displaySymbol(state.symbol || 'BTCUSDT');
-  const w = chart.timeScale().width() || 800;
-  const big = Math.round(Math.max(40, Math.min(110, (w * 0.45) / (text.length * 0.62))));
+  // 和 TradingView 一樣：第一行「商品, 週期」，第二行商品說明
   const iv = INTERVALS.find(i => i.id === state.interval);
+  const text = `${displaySymbol(state.symbol || 'BTCUSDT')}, ${iv?.legend ?? ''}`;
+  const w = chart.timeScale().width() || 800;
+  const big = Math.round(Math.max(36, Math.min(96, (w * 0.6) / (text.length * 0.58))));
+  const color = 'rgba(219, 219, 219, 0.08)';
   watermark.applyOptions({
     visible: state.watermark,
     lines: [
-      { text, color: 'rgba(219, 219, 219, 0.09)', fontSize: big, fontStyle: 'bold', lineHeight: Math.round(big * 1.1) },
-      { text: `${symbolMeta(state.symbol || 'BTCUSDT').desc} · ${iv?.legend ?? ''}`, color: 'rgba(219, 219, 219, 0.09)', fontSize: Math.round(big * 0.2) },
+      { text, color, fontSize: big, lineHeight: Math.round(big * 1.15) },
+      { text: symbolMeta(state.symbol || 'BTCUSDT').desc, color, fontSize: Math.round(big * 0.34), lineHeight: Math.round(big * 0.5) },
     ],
   });
+  const btn = document.querySelector('#wmBtn');
+  if (btn) { btn.classList.toggle('active', state.watermark); btn.title = state.watermark ? '關閉浮水印' : '開啟浮水印'; }
 }
 
 // ================= 模組 =================
@@ -237,11 +242,12 @@ const drawings = new Drawings({
   chart, series: mainSeries, wrap,
   getBars: () => state.bars, getStep: () => intervalSec(state.interval), getPrecision: () => state.precision,
   fmt: p => fmt(p), fmtTime, fmtVol,
+  getTrade: () => state.trade,
   onToolDone: () => toolbar.cursorReset(),
   onChange: () => { renderTree(); toolbar?.render(); checkPositionHits(false); },
   onSelect: d => { renderFloatTb(d); renderTree(); },
 });
-const tradeLines = new TradeLines({ chart, series: mainSeries, wrap, overlay: $('#tradeOverlay'), round: roundP });
+const tradeLines = new TradeLines({ chart, series: mainSeries, wrap, overlay: $('#tradeOverlay'), round: roundP, getAvoid: () => drawings.labelRects });
 
 function setCursorMode(m) {
   state.cursorMode = m;
@@ -275,6 +281,7 @@ function setIndicatorsHidden(h) {
 let unsubKline = null, unsubBook = null, loadToken = 0, olderLoading = false, noMoreOlder = false;
 
 async function load(symbol, interval, { keepView = false } = {}) {
+  if (replay.active && symbol === state.symbol && interval !== state.interval) return switchReplayInterval(interval);
   if (replay.active || replay.picking) { replay.reset(); leaveReplayBroker(); }
   const token = ++loadToken;
   const symbolChanged = symbol !== state.symbol || !state.bars.length;
@@ -305,8 +312,7 @@ async function load(symbol, interval, { keepView = false } = {}) {
   if (!keepView) chart.timeScale().resetTimeScale();
   if (symbolChanged) {
     drawings.setSymbol(symbol);
-    state.qty = niceQty(bars[bars.length - 1].close);
-    $('#qtQty').value = state.qty;
+    renderLev();
   }
   broker.onPrice(symbol, bars[bars.length - 1].close);
   $('#lgStatus').classList.toggle('sim', !feed.live);
@@ -483,17 +489,54 @@ const bidAsk = () => {
 
 // ================= 下單 =================
 function marketOrder(side) {
-  broker.placeOrder({ symbol: state.symbol, side, type: 'market', qty: parseFloat($('#qtQty').value) });
+  const { bid, ask } = bidAsk();
+  broker.placeOrder({ symbol: state.symbol, side, type: 'market', qty: qtyFor(side === 'buy' ? ask : bid), leverage: state.trade.leverage });
 }
 $('#qtBuy').addEventListener('click', () => marketOrder('buy'));
 $('#qtSell').addEventListener('click', () => marketOrder('sell'));
-$('#qtQty').addEventListener('change', e => {
-  const v = parseFloat(e.target.value);
-  if (v > 0) state.qty = v;
-  e.target.value = state.qty;
-  renderTicket();
+
+// 本金與槓桿：左上角買賣按鈕中間的小按鈕，點開可以設定（下單面板、右鍵下單共用）
+const levPop = document.createElement('div');
+levPop.className = 'lev-pop';
+levPop.hidden = true;
+wrap.appendChild(levPop);
+const levChips = cur => `<div class="lev-chips">${LEVERAGES.map(l => `<button data-lev="${l}" class="${l === cur ? 'on' : ''}">${l}x</button>`).join('')}</div>`;
+function renderLev() {
+  const { margin, leverage } = state.trade;
+  $('#qtLevX').textContent = `${leverage}x`;
+  $('#qtLevM').textContent = `${margin}U`;
+  if (levPop.hidden) return;
+  const last = bidAsk().ask;
+  const q = qtyFor(last);
+  levPop.innerHTML = `
+    <div class="lev-title">本金與槓桿</div>
+    <label class="lev-row"><span>本金</span><span class="op-input"><input data-tf="margin" value="${margin}"><span class="op-unit">USDT</span></span></label>
+    <label class="lev-row"><span>槓桿</span><span class="op-input"><input data-tf="leverage" value="${leverage}"><span class="op-unit">倍</span></span></label>
+    ${levChips(leverage)}
+    <div class="lev-info">
+      <div><span>倉位價值</span><b>${money(margin * leverage)} USDT</b></div>
+      <div><span>數量（約）</span><b>${q} ${symbolMeta(state.symbol).base}</b></div>
+      <div><span>強平價（多 / 空）</span><b>${leverage > 1 ? `${fmt(last * (1 - 1 / leverage))} / ${fmt(last * (1 + 1 / leverage))}` : '不會強平'}</b></div>
+    </div>`;
+}
+function setTrade(patch) {
+  Object.assign(state.trade, patch);
+  state.trade.margin = Math.max(1, +state.trade.margin || 100);
+  state.trade.leverage = Math.min(125, Math.max(1, Math.round(+state.trade.leverage || 1)));
+  renderLev(); renderTicket(); syncTradeLines(); savePrefs();
+}
+$('#qtLev').addEventListener('click', e => {
+  e.stopPropagation();
+  levPop.hidden = !levPop.hidden;
+  const b = $('#qtLev').getBoundingClientRect(), w = wrap.getBoundingClientRect();
+  levPop.style.left = `${Math.max(4, b.left - w.left - 90)}px`;
+  levPop.style.top = `${b.bottom - w.top + 6}px`;
+  renderLev();
 });
-$('#qtQty').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') e.target.blur(); });
+levPop.addEventListener('pointerdown', e => e.stopPropagation());
+levPop.addEventListener('change', e => { const f = e.target.dataset.tf; if (f) setTrade({ [f]: parseFloat(e.target.value) }); });
+levPop.addEventListener('click', e => { const l = e.target.closest('[data-lev]'); if (l) setTrade({ leverage: +l.dataset.lev }); });
+document.addEventListener('pointerdown', e => { if (!levPop.hidden && !e.target.closest('.lev-pop, #qtLev')) levPop.hidden = true; });
 
 function ticketRef() {
   const { bid, ask } = bidAsk();
@@ -532,8 +575,12 @@ function renderTicket() {
       <div class="op-input"><input id="opPrice" value="${ticket.price ?? ''}"><button class="op-step" data-step="price:-1">−</button><button class="op-step" data-step="price:1">+</button></div>
     </div>
     <div class="op-field">
-      <div class="op-label"><span>數量</span><span>${meta.base}</span></div>
-      <div class="op-input"><input id="opQty" value="${state.qty}"><button class="op-step" data-step="qty:-1">−</button><button class="op-step" data-step="qty:1">+</button></div>
+      <div class="op-label"><span>本金</span><span>USDT</span></div>
+      <div class="op-input"><input id="opMargin" value="${state.trade.margin}"><span class="op-unit">USDT</span></div>
+    </div>
+    <div class="op-field">
+      <div class="op-label"><span>槓桿</span><span>${state.trade.leverage}x</span></div>
+      ${levChips(state.trade.leverage)}
     </div>
     <div class="op-bracket">
       <label class="op-check"><input type="checkbox" id="opTpOn" ${ticket.tpOn ? 'checked' : ''}>止盈<span class="op-est up" id="opTpEst"></span></label>
@@ -542,7 +589,9 @@ function renderTicket() {
       <div class="op-input" ${ticket.slOn ? '' : 'hidden'}><input id="opSl" value="${ticket.sl ?? ''}"><span class="op-unit">USDT</span></div>
     </div>
     <div class="op-info">
-      <div><span>交易價值</span><b id="opValue">—</b></div>
+      <div><span>倉位價值</span><b id="opValue">—</b></div>
+      <div><span>數量</span><b id="opQty">—</b></div>
+      <div><span>強平價</span><b id="opLiq">—</b></div>
       <div><span>風險報酬比</span><b id="opRR">—</b></div>
       <div><span>可用資金</span><b id="opAvail">—</b></div>
     </div>
@@ -554,7 +603,8 @@ function renderTicket() {
   el.querySelectorAll('.op-types button').forEach(b => b.onclick = () => { ticket.type = b.dataset.type; ticket.price = null; ticket.tp = ticket.sl = null; renderTicket(); syncTradeLines(); });
   const num = (id, fn) => $(id)?.addEventListener('change', e => { const v = parseFloat(e.target.value.replace(/,/g, '')); fn(isNaN(v) ? null : v); renderTicket(); syncTradeLines(); });
   num('#opPrice', v => (ticket.price = v));
-  num('#opQty', v => { if (v > 0) { state.qty = v; $('#qtQty').value = v; } });
+  $('#opMargin').addEventListener('change', e => setTrade({ margin: parseFloat(e.target.value) }));
+  el.querySelectorAll('.lev-chips [data-lev]').forEach(b => b.onclick = () => setTrade({ leverage: +b.dataset.lev }));
   num('#opTp', v => (ticket.tp = v));
   num('#opSl', v => (ticket.sl = v));
   $('#opTpOn').onchange = e => { ticket.tpOn = e.target.checked; ticket.tp = null; renderTicket(); syncTradeLines(); };
@@ -562,13 +612,12 @@ function renderTicket() {
   el.querySelectorAll('.op-step').forEach(b => b.onclick = () => {
     const [field, dir] = b.dataset.step.split(':');
     if (field === 'price') ticket.price = roundP((ticket.price ?? ticketRef()) + +dir * 10 ** -state.precision * 10);
-    else { state.qty = Math.max(qtyStep(state.qty), +(state.qty + +dir * qtyStep(state.qty)).toPrecision(8)); $('#qtQty').value = state.qty; }
     renderTicket(); syncTradeLines();
   });
   $('#opSubmit').onclick = () => {
     const o = broker.placeOrder({
-      symbol: state.symbol, side: ticket.side, type: ticket.type, qty: state.qty, price: ticket.price,
-      tp: ticket.tpOn ? ticket.tp : null, sl: ticket.slOn ? ticket.sl : null,
+      symbol: state.symbol, side: ticket.side, type: ticket.type, qty: qtyFor(ticketRef()), price: ticket.price,
+      tp: ticket.tpOn ? ticket.tp : null, sl: ticket.slOn ? ticket.sl : null, leverage: state.trade.leverage,
     });
     if (o) { ticket.price = null; ticket.tp = ticket.sl = null; renderTicket(); syncTradeLines(); }
   };
@@ -583,16 +632,19 @@ function updateTicketDynamic() {
   $('#opSpread').textContent = bid != null ? fmt(ask - bid) : '';
   const ref = ticketRef();
   const dir = ticket.side === 'buy' ? 1 : -1;
-  const q = state.qty;
+  const q = qtyFor(ref);
+  const { margin, leverage } = state.trade;
   const tpPnl = ticket.tpOn && ticket.tp != null ? (ticket.tp - ref) * q * dir : null;
   const slPnl = ticket.slOn && ticket.sl != null ? (ticket.sl - ref) * q * dir : null;
-  $('#opTpEst').textContent = tpPnl != null ? `${fmtUsd(tpPnl)} USD` : '';
-  $('#opSlEst').textContent = slPnl != null ? `${fmtUsd(slPnl)} USD` : '';
-  $('#opValue').textContent = ref ? `${money(ref * q)} USD` : '—';
+  $('#opTpEst').textContent = tpPnl != null ? `${fmtUsdt(tpPnl)} (${fmtPct((tpPnl / margin) * 100)})` : '';
+  $('#opSlEst').textContent = slPnl != null ? `${fmtUsdt(slPnl)} (${fmtPct((slPnl / margin) * 100)})` : '';
+  $('#opValue').textContent = `${money(margin * leverage)} USDT`;
+  $('#opQty').textContent = ref ? `${q} ${symbolMeta(state.symbol).base}` : '—';
+  $('#opLiq').textContent = ref && leverage > 1 ? fmt(ref * (1 - dir / leverage)) : '不會強平';
   $('#opRR').textContent = tpPnl != null && slPnl ? Math.abs(tpPnl / slPnl).toFixed(2) : '—';
-  $('#opAvail').textContent = `${money(broker.summary().available)} USD`;
+  $('#opAvail').textContent = `${money(broker.summary().available)} USDT`;
   const priceTxt = ticket.type === 'market' ? '市價' : `@ ${fmt(ticket.price)} ${typeText(ticket.type)}`;
-  $('#opSubmit').innerHTML = `${sideText(ticket.side)} ${q} ${displaySymbol(state.symbol)}<small>${priceTxt}</small>`;
+  $('#opSubmit').innerHTML = `${sideText(ticket.side)} ${displaySymbol(state.symbol)} · 本金 ${margin}U × ${leverage}x<small>${priceTxt}・數量 ${q}</small>`;
 }
 
 // ================= 圖表上的交易線 =================
@@ -601,16 +653,16 @@ function syncTradeLines() {
   const descs = [];
   const pos = broker.positions[sym];
   const last = broker.price(sym);
-  const pnlText = (label, pnl) => ({ text: `${label} ${fmtUsd(pnl)} USD`, cls: pnl >= 0 ? 'pos' : 'neg' });
+  const pnlText = (label, pnl, margin) => ({ text: `${label} ${fmtUsdt(pnl)}${margin ? ` (${fmtPct((pnl / margin) * 100)})` : ''}`, cls: pnl >= 0 ? 'pos' : 'neg' });
 
   if (pos) {
     const dir = pos.side === 'buy' ? 1 : -1;
-    const est = (p, kind) => pnlText(kind, (p - pos.avg) * pos.qty * dir);
+    const est = (p, kind) => pnlText(kind, (p - pos.avg) * pos.qty * dir, posMargin(pos));
     const upnl = broker.unrealized(sym);
     descs.push({
       key: 'pos', price: pos.avg, color: dir > 0 ? BLUE : RED,
-      text: () => ({ text: `${fmtUsd(upnl)} USD`, cls: upnl >= 0 ? 'pos' : 'neg' }),
-      qty: `${dir > 0 ? '' : '−'}${pos.qty}`, onClose: () => broker.closePosition(sym), closeTitle: '平倉',
+      text: () => ({ text: `${fmtUsdt(upnl)} (${fmtPct(broker.roe(sym))})`, cls: upnl >= 0 ? 'pos' : 'neg' }),
+      qty: `${Math.round(pos.leverage ?? 1)}x ${dir > 0 ? '' : '−'}${pos.qty}`, onClose: () => broker.closePosition(sym), closeTitle: '平倉',
       addTP: pos.tp == null ? { text: p => est(p, '止盈'), onCommit: p => broker.modifyPosition(sym, { tp: p }) } : null,
       addSL: pos.sl == null ? { text: p => est(p, '止損'), onCommit: p => broker.modifyPosition(sym, { sl: p }) } : null,
     });
@@ -622,7 +674,7 @@ function syncTradeLines() {
 
   for (const o of broker.orders.filter(x => x.symbol === sym)) {
     const dir = o.side === 'buy' ? 1 : -1;
-    const est = (p, kind) => pnlText(kind, (p - o.price) * o.qty * dir);
+    const est = (p, kind) => pnlText(kind, (p - o.price) * o.qty * dir, (o.qty * o.price) / (o.leverage || 1));
     descs.push({
       key: `ord-${o.id}`, price: o.price, color: dir > 0 ? BLUE : RED, dashed: true,
       text: () => ({ text: `${sideText(o.side)} ${typeText(o.type)}` }), qty: o.qty,
@@ -638,21 +690,21 @@ function syncTradeLines() {
 
   if (orderPanelOpen() && last != null) {
     const dir = ticket.side === 'buy' ? 1 : -1;
-    const est = (p, kind) => pnlText(kind, (p - ticketRef()) * state.qty * dir);
+    const est = (p, kind) => pnlText(kind, (p - ticketRef()) * qtyFor(ticketRef()) * dir, state.trade.margin);
     const setInput = (id, v) => { const i = $(id); if (i) i.value = v; };
     if (ticket.type !== 'market' && ticket.price != null) descs.push({
       key: 'pv-entry', price: ticket.price, color: dir > 0 ? BLUE : RED, preview: true,
-      text: () => ({ text: `${sideText(ticket.side)} ${typeText(ticket.type)}` }), qty: state.qty,
+      text: () => ({ text: `${sideText(ticket.side)} ${typeText(ticket.type)}` }), qty: qtyFor(ticketRef()),
       onDrag: p => { ticket.price = p; setInput('#opPrice', p); updateTicketDynamic(); },
       onCommit: p => { ticket.price = p; renderTicket(); syncTradeLines(); },
     });
     if (ticket.tpOn && ticket.tp != null) descs.push({
-      key: 'pv-tp', price: ticket.tp, color: GREEN, preview: true, text: p => est(p, '止盈'), qty: state.qty,
+      key: 'pv-tp', price: ticket.tp, color: GREEN, preview: true, text: p => est(p, '止盈'), qty: qtyFor(ticketRef()),
       onDrag: p => { ticket.tp = p; setInput('#opTp', p); updateTicketDynamic(); },
       onCommit: p => { ticket.tp = p; renderTicket(); syncTradeLines(); },
     });
     if (ticket.slOn && ticket.sl != null) descs.push({
-      key: 'pv-sl', price: ticket.sl, color: RED, preview: true, text: p => est(p, '止損'), qty: state.qty,
+      key: 'pv-sl', price: ticket.sl, color: RED, preview: true, text: p => est(p, '止損'), qty: qtyFor(ticketRef()),
       onDrag: p => { ticket.sl = p; setInput('#opSl', p); updateTicketDynamic(); },
       onCommit: p => { ticket.sl = p; renderTicket(); syncTradeLines(); },
     });
@@ -679,6 +731,7 @@ function renderFloatTb(d) {
     <span class="ft-grip" title="拖曳"><svg viewBox="0 0 8 18" width="8" height="18"><g fill="currentColor"><circle cx="2" cy="4" r="1"/><circle cx="6" cy="4" r="1"/><circle cx="2" cy="9" r="1"/><circle cx="6" cy="9" r="1"/><circle cx="2" cy="14" r="1"/><circle cx="6" cy="14" r="1"/></g></svg></span>
     ${hasColor ? `<button class="ft-btn ${ftbPop === 'color' ? 'open' : ''}" data-pop="color" title="顏色">${swatch(d.color)}</button>` : ''}
     ${d.type === 'text' ? `<button class="ft-btn ${ftbPop === 'size' ? 'open' : ''}" data-pop="size" title="字體大小">${d.size}</button>` : ''}
+    ${d.type === 'long' || d.type === 'short' ? `<button class="ft-btn ft-trade-btn ${ftbPop === 'trade' ? 'open' : ''}" data-pop="trade" title="這個部位框的本金與槓桿"><span>本金 ${d.margin ?? 100}U × ${d.leverage ?? 10}x</span></button>` : ''}
     ${d.type === 'long' || d.type === 'short' ? `<button class="ft-btn ${ftbPop === 'lsize' ? 'open' : ''}" data-pop="lsize" title="標籤字體大小"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="currentColor" d="M8 8.5h9v2h-1v-1h-2.5v9H15v1h-5v-1h1.5v-9H9v1H8zM17.5 13.5h5v1h-2v5h1v1h-3v-1h1v-5h-2z"/></svg><span>${d.labelSize ?? 11}</span></button>` : ''}
     ${hasWidth ? `<button class="ft-btn ${ftbPop === 'width' ? 'open' : ''}" data-pop="width" title="線寬"><svg viewBox="0 0 28 28" width="28" height="28"><path stroke="currentColor" stroke-width="${d.width}" d="M6 14h16"/></svg><span>${d.width}px</span></button>` : ''}
     ${lineStyle ? `<button class="ft-btn ${ftbPop === 'style' ? 'open' : ''}" data-pop="style" title="線條樣式">${styleIcon(d.style)}</button>` : ''}
@@ -700,6 +753,11 @@ function renderFloatTb(d) {
 function popHtml(d) {
   if (ftbPop === 'color') return `<div class="ft-pop"><div class="ft-colors">${PALETTE.map(c => `<button data-color="${c}" class="${c === d.color ? 'on' : ''}" style="background:${c}"></button>`).join('')}</div></div>`;
   if (ftbPop === 'width') return `<div class="ft-pop ft-list">${[1, 2, 3, 4].map(w => `<button data-width="${w}" class="${w === d.width ? 'on' : ''}"><svg viewBox="0 0 40 10" width="40" height="10"><path stroke="currentColor" stroke-width="${w}" d="M2 5h36"/></svg>${w}px</button>`).join('')}</div>`;
+  if (ftbPop === 'trade') return `<div class="ft-pop ft-trade">
+      <label class="lev-row"><span>本金</span><span class="op-input"><input data-field="margin" value="${d.margin ?? 100}"><span class="op-unit">USDT</span></span></label>
+      <label class="lev-row"><span>槓桿</span><span class="op-input"><input data-field="leverage" value="${d.leverage ?? 10}"><span class="op-unit">倍</span></span></label>
+      <div class="lev-chips">${LEVERAGES.map(l => `<button data-plev="${l}" class="${l === (d.leverage ?? 10) ? 'on' : ''}">${l}x</button>`).join('')}</div>
+    </div>`;
   if (ftbPop === 'lsize') return `<div class="ft-pop ft-list">${[9, 10, 11, 12, 13, 14].map(s => `<button data-lsize="${s}" class="${s === (d.labelSize ?? 11) ? 'on' : ''}">${s}${s === 11 ? '（預設）' : ''}</button>`).join('')}</div>`;
   if (ftbPop === 'size') return `<div class="ft-pop ft-list">${[10, 12, 14, 16, 20, 24, 28, 40].map(s => `<button data-size="${s}" class="${s === d.size ? 'on' : ''}">${s}</button>`).join('')}</div>`;
   if (ftbPop === 'style') return `<div class="ft-pop ft-list">${[['solid', '實線'], ['dashed', '虛線'], ['dotted', '點線']].map(([s, n]) => `<button data-style="${s}" class="${(d.style || 'solid') === s ? 'on' : ''}"><svg viewBox="0 0 40 10" width="40" height="10"><path stroke="currentColor" stroke-width="2" ${s === 'dashed' ? 'stroke-dasharray="5 3"' : s === 'dotted' ? 'stroke-dasharray="1.5 3" stroke-linecap="round"' : ''} d="M2 5h36"/></svg>${n}</button>`).join('')}</div>`;
@@ -714,15 +772,22 @@ ftb.addEventListener('pointerdown', e => {
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', () => window.removeEventListener('pointermove', move), { once: true });
 });
+ftb.addEventListener('change', e => {
+  const f = e.target.dataset.field, d = drawings.selected;
+  if (!f || !d) return;
+  const v = parseFloat(e.target.value);
+  if (v > 0) drawings.setStyle({ [f]: f === 'leverage' ? Math.min(125, Math.max(1, Math.round(v))) : v });
+});
 ftb.addEventListener('click', e => {
   const d = drawings.selected;
   if (!d) return;
-  const t = e.target.closest('[data-pop],[data-act],[data-color],[data-width],[data-style],[data-size],[data-lsize]');
+  const t = e.target.closest('[data-pop],[data-act],[data-color],[data-width],[data-style],[data-size],[data-lsize],[data-plev]');
   if (!t) return;
   if (t.dataset.pop) { ftbPop = ftbPop === t.dataset.pop ? null : t.dataset.pop; renderFloatTb(d); return; }
   if (t.dataset.act === 'delete') { drawings.deleteSelected(); return; }
   if (t.dataset.act === 'lock') { drawings.setStyle({ locked: !d.locked }); return; }
   if (t.dataset.act === 'stats') { drawings.setStyle({ hideStats: !d.hideStats }); return; }
+  if (t.dataset.plev) { drawings.setStyle({ leverage: +t.dataset.plev }); return; }
   if (t.dataset.act === 'settings') { toast('示範版', '繪圖設定對話框尚未實作，可用左邊的顏色/線寬調整', 'info'); return; }
   ftbPop = null;
   if (t.dataset.color) drawings.setStyle({ color: t.dataset.color });
@@ -738,15 +803,17 @@ const ctx = $('#ctxMenu');
 function openOrderMenu(x, y, price, { compact = false } = {}) {
   const r = wrap.getBoundingClientRect();
   const { bid, ask } = bidAsk();
-  const q = parseFloat($('#qtQty').value) || state.qty;
+  const q = qtyFor(price);
+  const lev = state.trade.leverage;
+  const tag = `${state.trade.margin}U×${lev}x`;
   const items = [];
   const sym = displaySymbol(state.symbol);
   if (price != null && ask != null) {
     const buyType = price < ask ? 'limit' : 'stop';
     const sellType = price > bid ? 'limit' : 'stop';
     items.push(
-      { html: `<span class="ctx-ic buy">▲</span><span>買入 ${q} ${sym} @ <span class="buy">${fmt(price)}</span> ${typeText(buyType)}</span>`, fn: () => broker.placeOrder({ symbol: state.symbol, side: 'buy', type: buyType, qty: q, price }) },
-      { html: `<span class="ctx-ic sell">▼</span><span>賣出 ${q} ${sym} @ <span class="sell">${fmt(price)}</span> ${typeText(sellType)}</span>`, fn: () => broker.placeOrder({ symbol: state.symbol, side: 'sell', type: sellType, qty: q, price }) },
+      { html: `<span class="ctx-ic buy">▲</span><span>買入 ${sym} ${tag} @ <span class="buy">${fmt(price)}</span> ${typeText(buyType)}</span>`, fn: () => broker.placeOrder({ symbol: state.symbol, side: 'buy', type: buyType, qty: q, price, leverage: lev }) },
+      { html: `<span class="ctx-ic sell">▼</span><span>賣出 ${sym} ${tag} @ <span class="sell">${fmt(price)}</span> ${typeText(sellType)}</span>`, fn: () => broker.placeOrder({ symbol: state.symbol, side: 'sell', type: sellType, qty: q, price, leverage: lev }) },
       { html: '<span class="ctx-ic">＋</span><span>建立新訂單…</span>', fn: () => { ticket.side = price < ask ? 'buy' : 'sell'; ticket.type = ticket.side === 'buy' ? buyType : sellType; ticket.price = price; ticket.tp = ticket.sl = null; showView('viewOrder'); } },
       { html: `<span class="ctx-ic">—</span><span>在 ${fmt(price)} 繪製水平線</span>`, fn: () => { drawings.list.push({ type: 'hline', color: BLUE, width: 1, p: [{ t: 0, price }] }); drawings._commit(); } },
     );
@@ -808,6 +875,24 @@ document.addEventListener('pointerdown', e => {
   if (ftbPop && !e.target.closest('.float-tb')) { ftbPop = null; renderFloatTb(drawings.selected); }
 });
 
+// ================= 價格軸滾輪縮放 =================
+// 滑鼠在右邊價格軸上用滾輪，可以拉長/壓扁價格範圍（以滑鼠所在的價格為中心）
+wrap.addEventListener('wheel', e => {
+  const r = wrap.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  const paneW = chart.timeScale().width(), psW = chart.priceScale('right').width();
+  if (x <= paneW || x > paneW + psW || y > chart.panes()[0].getHeight()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const ps = mainSeries.priceScale();
+  const range = ps.getVisibleRange();
+  const anchor = mainSeries.coordinateToPrice(y);
+  if (!range || anchor == null) return;
+  const factor = Math.exp(Math.max(-1, Math.min(1, e.deltaY / 100)) * 0.12);   // 往下滾 = 範圍變大（K 線變扁）
+  ps.setAutoScale(false);
+  ps.setVisibleRange({ from: anchor - (anchor - range.from) * factor, to: anchor + (range.to - anchor) * factor });
+}, { passive: false, capture: true });
+
 // ================= 價格座標設定 =================
 const psMenu = $('#psMenu');
 function positionScaleWidgets() {
@@ -842,6 +927,7 @@ psMenu.addEventListener('click', e => {
   renderPsMenu();
 });
 $('#psCur').onclick = () => toast('示範版', '貨幣轉換尚未實作', 'info');
+$('#wmBtn').onclick = () => { state.watermark = !state.watermark; updateWatermark(); savePrefs(); };
 
 // ================= 底部交易面板 =================
 let bottomTab = 'positions', bottomQueued = false;
@@ -872,13 +958,13 @@ function renderBottom() {
   let html;
   if (bottomTab === 'positions') {
     html = !positions.length ? '<div class="pt-empty">目前沒有持倉</div>' : table(
-      ['商品', '方向', '數量', '平均成交價', '止盈', '止損', '最新價', '未實現損益', '未實現損益 %', '交易價值', ''],
+      ['商品', '方向', '槓桿', '數量', '保證金', '平均成交價', '止盈', '止損', '強平價', '最新價', '未實現損益', '收益率', ''],
       positions.map(p => {
-        const last = broker.price(p.symbol), u = broker.unrealized(p.symbol);
-        const pct = (u / (p.avg * p.qty)) * 100;
-        return [sym(p.symbol), side(p.side), p.qty, fmt(p.avg, prec(p.symbol)), p.tp != null ? fmt(p.tp, prec(p.symbol)) : '—', p.sl != null ? fmt(p.sl, prec(p.symbol)) : '—',
-          fmt(last, prec(p.symbol)), `<span class="${u >= 0 ? 'up' : 'down'}">${fmtUsd(u)}</span>`, `<span class="${u >= 0 ? 'up' : 'down'}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>`,
-          money(last * p.qty), `<span class="act"><button data-rev="${p.symbol}">反向</button><button data-close="${p.symbol}">平倉 ✕</button></span>`];
+        const last = broker.price(p.symbol), u = broker.unrealized(p.symbol), roe = broker.roe(p.symbol), liq = liqPrice(p);
+        return [sym(p.symbol), side(p.side), `${Math.round(p.leverage ?? 1)}x`, p.qty, money(posMargin(p)), fmt(p.avg, prec(p.symbol)),
+          p.tp != null ? fmt(p.tp, prec(p.symbol)) : '—', p.sl != null ? fmt(p.sl, prec(p.symbol)) : '—', liq != null ? fmt(liq, prec(p.symbol)) : '—',
+          fmt(last, prec(p.symbol)), `<span class="${u >= 0 ? 'up' : 'down'}">${fmtUsdt(u)}</span>`, `<span class="${u >= 0 ? 'up' : 'down'}">${fmtPct(roe)}</span>`,
+          `<span class="act"><button data-rev="${p.symbol}">反向</button><button data-close="${p.symbol}">平倉 ✕</button></span>`];
       }));
   } else if (bottomTab === 'orders') {
     html = !broker.orders.length ? '<div class="pt-empty">目前沒有工作中的訂單</div>' : table(
@@ -1351,10 +1437,11 @@ function checkPositionHits(fire) {
     posSeen.set(d, key);
     if (!fire || prev === undefined || prev === key || !key) continue;
     const pts = (st.close.price - d.entry) * (d.type === 'long' ? 1 : -1);
-    const pct = (pts / d.entry) * 100;
+    const m = drawings.positionMoney(d, pts);
     hitFx({
-      reason: st.close.price === d.tp ? '止盈' : '止損', price: st.close.price, time: st.close.t,
-      sub: `${pts >= 0 ? '+' : '−'}${fmt(Math.abs(pts))} (${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(2)}%)`,
+      reason: { tp: '止盈', sl: '止損', liq: '強平' }[st.close.kind] ?? (st.close.price === d.tp ? '止盈' : '止損'),
+      price: st.close.price, time: st.close.t,
+      sub: `${fmtUsdt(m.usdt)} (${fmtPct(m.roe)})`,
     });
   }
 }
@@ -1362,7 +1449,7 @@ for (const b of [realBroker, replayBroker]) {
   b.addEventListener('hit', e => {
     const h = e.detail;
     if (b !== broker || h.symbol !== state.symbol) return;
-    hitFx({ reason: h.reason, price: h.price, sub: `${fmtUsd(h.pnl)} USD` });
+    hitFx({ reason: h.reason, price: h.price, sub: `${fmtUsdt(h.pnl)}${h.roe != null ? ` (${fmtPct(h.roe)})` : ''}` });
   });
 }
 
@@ -1424,6 +1511,41 @@ $('#replayBtn').onclick = () => {
   else if (replay.active) replay.exit();
   else replay.startPick();
 };
+
+// 重播中換 K 線週期：用新週期的 K 線接回原本的重播時間點（帳戶、持倉、部位框都保留）
+async function switchReplayInterval(interval) {
+  const oldStep = intervalSec(state.interval);
+  const endOf = i => replay.all[i].time + oldStep;          // 舊週期第 i 根 K 線的收盤時間
+  const curEnd = endOf(replay.pos);
+  const startEnd = endOf(replay.start);
+  const endEnd = replay.end != null ? endOf(replay.end) : null;
+  const visible = chart.timeScale().getVisibleLogicalRange();
+  const barsShown = visible ? (visible.to - visible.from) * (oldStep / intervalSec(interval)) : 150;
+  replay.pause();
+  const token = ++loadToken;
+  state.interval = interval;
+  renderHeader();
+  const step = intervalSec(interval);
+  const nowT = Math.floor(Date.now() / 1000) + TZ_OFFSET;
+  // 抓重播時間點前後的 K 線（前面約 400 根、後面約 600 根）
+  let bars = await feed.getBars(state.symbol, interval, { limit: 1000, endTime: Math.min(curEnd + 600 * step, nowT + step) });
+  if (token !== loadToken || !replay.active) return;
+  if (bars.length && bars[0].time > curEnd - 200 * step && feed.live) {
+    const older = await feed.getBars(state.symbol, interval, { limit: 1000, endTime: bars[0].time });
+    bars = older.filter(b => b.time < bars[0].time).concat(bars);
+  }
+  if (token !== loadToken || !replay.active) return;
+  // 新週期中，最後一根「在這個時間點之前已經收盤」的 K 線
+  const idxAt = tEnd => {
+    let i = bars.length - 1;
+    while (i > 0 && bars[i].time + step > tEnd) i--;
+    return i;
+  };
+  const pos = Math.max(1, idxAt(curEnd));
+  replay.resume(bars, Math.min(pos, idxAt(startEnd)), endEnd != null ? Math.max(pos, idxAt(endEnd)) : null, pos, barsShown);
+  renderLegend();
+  savePrefs();
+}
 
 // ================= 錄影 =================
 function renderRecMenu() {

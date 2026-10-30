@@ -102,6 +102,8 @@ export class Replay {
     this.wrap.append(this.sel, this.endLine, this.bar);
 
     this.bar.addEventListener('pointerdown', e => e.stopPropagation());
+    // 按鈕不要拿到焦點，否則之後按空白鍵會同時觸發按鈕和快捷鍵，等於切換兩次
+    this.bar.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
     this.bar.addEventListener('click', e => {
       const sp = e.target.closest('[data-speed]');
       if (sp) { this.speedIdx = +sp.dataset.speed; this._menu(false); this._ui(); return; }
@@ -127,8 +129,13 @@ export class Replay {
   }
 
   _ui() {
-    this.bar.querySelector('[data-a="play"]').innerHTML = SVG(this.playing ? IC.pause : IC.play);
-    this.bar.querySelector('[data-a="play"]').classList.toggle('on', this.playing);
+    // 只有狀態改變時才換圖示：每一幀都重畫的話，按下去的那個元素會被換掉，點擊就不會觸發（暫停會失效）
+    const playBtn = this.bar.querySelector('[data-a="play"]');
+    if (playBtn.dataset.state !== String(this.playing)) {
+      playBtn.dataset.state = String(this.playing);
+      playBtn.innerHTML = SVG(this.playing ? IC.pause : IC.play);
+      playBtn.classList.toggle('on', this.playing);
+    }
     this.bar.classList.toggle('playing', this.playing);
     this.bar.querySelector('.rpb-speed').textContent = `${this.speed}x`;
     this.bar.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('on', +b.dataset.speed === this.speedIdx));
@@ -227,6 +234,18 @@ export class Replay {
     this._ui();
     this._trackEnd();
     this.hooks.toast?.('重播', end != null ? `已框選 ${end - start} 根K線，按 ▶ 開始播放` : '已選擇起點，按 ▶ 開始播放', 'info');
+  }
+
+  // 換週期時：用新週期的 K 線接續目前的重播位置（不重置帳戶）
+  resume(all, start, end, pos, barsShown = 150) {
+    this.pause();
+    this.all = all;
+    this.start = start;
+    this.end = end;
+    this._gotoIndex(pos, 0);
+    this.endLine.hidden = end == null;
+    this.chart.timeScale().setVisibleLogicalRange({ from: pos - barsShown * 0.75, to: pos + barsShown * 0.25 });
+    this._ui();
   }
 
   // 不經過 hooks.exit 直接停止（換商品/週期時用）
@@ -384,7 +403,7 @@ export class Replay {
       if (e.target.matches('input, textarea')) return;
       if (this.picking && e.key === 'Escape') { this.cancelPick(); if (!this.active) this.hooks.onCancel?.(); return; }
       if (!this.active) return;
-      if (e.key === ' ') { e.preventDefault(); this.toggle(); }
+      if (e.key === ' ') { e.preventDefault(); if (e.repeat) return; document.activeElement?.blur?.(); this.toggle(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); this.stepForward(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); this.stepBack(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); this.faster(); }

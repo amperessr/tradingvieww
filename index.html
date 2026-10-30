@@ -60,6 +60,7 @@
     <button class="tb-btn tb-icon soon" title="快速搜尋"><svg viewBox="0 0 28 28" width="28" height="28"><circle cx="12.5" cy="12.5" r="5.5" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M16.5 16.5l5 5M18 5.5l.8 1.7 1.7.8-1.7.8-.8 1.7-.8-1.7-1.7-.8 1.7-.8z"/></svg></button>
     <button class="tb-btn tb-icon soon" title="設定"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M10.3 6.5h7.4L21.5 14l-3.8 7.5h-7.4L6.5 14z"/><circle cx="14" cy="14" r="2.8" fill="none" stroke="currentColor"/></svg></button>
     <button class="tb-btn tb-icon" id="fullscreenBtn" title="全螢幕模式"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M8.5 12V8.5H12M16 8.5h3.5V12M19.5 16v3.5H16M12 19.5H8.5V16"/></svg></button>
+    <button class="tb-btn tb-wm" id="wmBtn" title="浮水印開／關"><svg viewBox="0 0 28 28" width="28" height="28"><rect x="5.5" y="7.5" width="17" height="13" rx="1.5" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M8.5 11l1.6 6 1.9-4.5 1.9 4.5 1.6-6M17 17h3"/></svg><span>浮水印</span></button>
     <button class="tb-btn tb-icon" id="screenshotBtn" title="拍攝快照"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M11 9.5l1.2-2h3.6l1.2 2h3.5a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1H11Z"/><circle cx="14" cy="14.5" r="3" fill="none" stroke="currentColor"/></svg></button>
     <button class="tb-btn tb-icon soon" title="發佈想法"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M11.5 21.5h5M11.5 19h5c0-2.5 3-3.7 3-7.3a5.5 5.5 0 1 0-11 0c0 3.6 3 4.8 3 7.3ZM14 11v4M12 13h4"/></svg></button>
     <button class="tb-trade" id="tradeBtn">交易</button>
@@ -82,7 +83,7 @@
           </div>
           <div class="lg-row lg-trade" id="quickTrade">
             <button class="qt-sell" id="qtSell"><span class="qt-price" id="qtSellPrice">—</span><span class="qt-label">賣出</span></button>
-            <input class="qt-qty" id="qtQty" value="1" spellcheck="false" title="數量">
+            <button class="qt-lev" id="qtLev" title="本金與槓桿（點一下設定）"><b id="qtLevX">10x</b><span id="qtLevM">100U</span></button>
             <button class="qt-buy" id="qtBuy"><span class="qt-price" id="qtBuyPrice">—</span><span class="qt-label">買入</span></button>
           </div>
           <div id="lgIndicators"></div>

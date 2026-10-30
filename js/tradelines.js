@@ -3,8 +3,8 @@
 import { LineStyle } from '../lib/lightweight-charts.standalone.production.mjs';
 
 export class TradeLines {
-  constructor({ chart, series, wrap, overlay, round }) {
-    Object.assign(this, { chart, series, wrap, overlay, round });
+  constructor({ chart, series, wrap, overlay, round, getAvoid }) {
+    Object.assign(this, { chart, series, wrap, overlay, round, getAvoid });
     this.items = new Map();   // key -> { d, line, el, price }
     this.dragging = null;
     this._loop = this._loop.bind(this);
@@ -139,22 +139,23 @@ export class TradeLines {
   _loop() {
     const paneW = this.chart.timeScale().width();
     const paneH = this.chart.panes()[0]?.getHeight() ?? 0;
-    // 價格太接近的標籤往左錯開，避免互相蓋住
-    const placed = [];
+    // 價格太接近的標籤往左錯開，避免互相蓋住；也避開部位框等繪圖的文字標籤
+    const placed = (this.getAvoid?.() || []).map(r => ({ x: r.x, top: r.y, w: r.w, h: r.h }));
     for (const it of this.items.values()) {
       const y = this.series.priceToCoordinate(it.price);
       if (y == null || y < 0 || y > paneH) { it.el.style.display = 'none'; continue; }
       it.el.style.display = '';
-      const w = it.el.offsetWidth;
+      const w = it.el.offsetWidth, h = 22, top = Math.round(y - 11);
       let x = Math.max(4, paneW - 70 - w);
-      for (let moved = true; moved;) {
+      for (let moved = true, n = 0; moved && n < 30; n++) {
         moved = false;
         for (const p of placed) {
-          if (Math.abs(p.y - y) < 23 && x < p.x + p.w + 4 && x + w > p.x - 4) { x = p.x - w - 6; moved = true; }
+          const vert = top < p.top + p.h + 1 && top + h > p.top - 1;
+          if (vert && x < p.x + p.w + 4 && x + w > p.x - 4) { x = p.x - w - 6; moved = true; }
         }
       }
-      placed.push({ x, y, w });
-      it.el.style.transform = `translate(${Math.max(4, x)}px, ${Math.round(y - 11)}px)`;
+      placed.push({ x, top, w, h });
+      it.el.style.transform = `translate(${Math.max(4, x)}px, ${top}px)`;
     }
     requestAnimationFrame(this._loop);
   }
