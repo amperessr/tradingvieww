@@ -15,6 +15,8 @@ const IC = {
   fwd: `<path fill="currentColor" d="M9.5 8.3v11.4L19 14z"/><path fill="currentColor" d="M19.5 8h1.5v12h-1.5z"/>`,
   fast: `<path fill="currentColor" d="M5.5 8.3v11.4L14 14zM14 8.3v11.4L22.5 14z"/>`,
   close: `<path ${S} d="M8 8l12 12M20 8L8 20"/>`,
+  cut: `<circle cx="9.5" cy="19.5" r="2.5" ${S}/><circle cx="18.5" cy="19.5" r="2.5" ${S}/><path ${S} d="M11 17.5l7-11M17 17.5l-7-11"/>`,
+  live: `<path fill="currentColor" d="M7 8.3v11.4L14.5 14zM14 8.3v11.4L21.5 14z"/><path fill="currentColor" d="M21.5 8H23v12h-1.5z"/>`,
 };
 
 // 用 K 棒時間當種子，讓同一根 K 線每次重播走的路徑都一樣（方便重拍）
@@ -56,8 +58,9 @@ function priceAt(path, f) {
 
 export class Replay {
   // hooks: getBars, applyBars(bars, mode), feedPrice(p), enter(), exit(), snapshot(), restore(snap), fmtTime(t), toast(...)
-  constructor({ chart, wrap, captureRoot, hooks }) {
-    Object.assign(this, { chart, wrap, hooks });
+  // dock：重播工具列放的位置（和 TradingView 一樣固定在圖表下方）
+  constructor({ chart, wrap, dock, captureRoot, hooks }) {
+    Object.assign(this, { chart, wrap, dock, hooks });
     this.active = false;
     this.picking = false;
     this.playing = false;
@@ -75,7 +78,8 @@ export class Replay {
     this.sel = document.createElement('div');
     this.sel.className = 'rp-sel';
     this.sel.hidden = true;
-    this.sel.innerHTML = '<div class="rp-shade"></div><div class="rp-line"></div><div class="rp-hint">點擊選擇重播起點　·　按住拖曳可框選一段　·　Esc 取消</div>';
+    // 和 TradingView 一樣：藍色直線＋剪刀圖示，時間軸上標出重播起點時間
+    this.sel.innerHTML = `<div class="rp-shade"></div><div class="rp-line"><i class="rp-cut">${SVG(IC.cut)}</i></div><div class="rp-time"></div>`;
     this.endLine = document.createElement('div');
     this.endLine.className = 'rp-endline';
     this.endLine.hidden = true;
@@ -83,23 +87,25 @@ export class Replay {
     this.bar.className = 'replay-bar';
     this.bar.hidden = true;
     this.bar.innerHTML = `
-      <button class="rpb" data-a="pick" title="選擇起點（重新框選）">${SVG(IC.pick)}</button>
-      <div class="rpb-sep"></div>
-      <button class="rpb" data-a="rewind" title="倒轉回起點">${SVG(IC.rewind)}</button>
-      <button class="rpb" data-a="back" title="後退一根 ←">${SVG(IC.back)}</button>
-      <button class="rpb rpb-play" data-a="play" title="播放 / 暫停（空白鍵）">${SVG(IC.play)}</button>
-      <button class="rpb" data-a="fwd" title="前進一根 →">${SVG(IC.fwd)}</button>
-      <div class="rpb-sep"></div>
-      <button class="rpb rpb-fast" data-a="fast" title="加速 ↑（↓ 減速）">${SVG(IC.fast)}</button>
-      <div class="rpb-speedwrap">
-        <button class="rpb rpb-speed" data-a="speed" title="播放速度"></button>
-        <div class="rpb-menu" hidden>${SPEEDS.map((s, i) => `<button data-speed="${i}">${s}x</button>`).join('')}</div>
-      </div>
-      <div class="rpb-sep"></div>
-      <span class="rpb-time"></span>
-      <div class="rpb-sep"></div>
-      <button class="rpb" data-a="exit" title="退出重播">${SVG(IC.close)}</button>`;
-    this.wrap.append(this.sel, this.endLine, this.bar);
+      <div class="rpb-group">
+        <button class="rpb rpb-text" data-a="pick" title="選擇K線（重新選擇起點或框選一段）">${SVG(IC.pick)}<span>選擇K線</span></button>
+        <div class="rpb-sep"></div>
+        <button class="rpb" data-a="rewind" title="倒轉回起點">${SVG(IC.rewind)}</button>
+        <button class="rpb" data-a="back" title="後退一根 ←">${SVG(IC.back)}</button>
+        <button class="rpb rpb-play" data-a="play" title="播放 / 暫停（空白鍵）">${SVG(IC.play)}</button>
+        <button class="rpb" data-a="fwd" title="前進一根 →">${SVG(IC.fwd)}</button>
+        <div class="rpb-speedwrap">
+          <button class="rpb rpb-speed" data-a="speed" title="播放速度"></button>
+          <div class="rpb-menu" hidden><div class="dd-sec">速度</div>${SPEEDS.map((s, i) => `<button class="dd-item" data-speed="${i}">${s}x</button>`).join('')}</div>
+        </div>
+        <button class="rpb" data-a="fast" title="加速 ↑（↓ 減速）">${SVG(IC.fast)}</button>
+        <div class="rpb-sep"></div>
+        <span class="rpb-time"></span>
+        <div class="rpb-sep"></div>
+        <button class="rpb rpb-text" data-a="exit" title="結束重播，跳到即時行情">${SVG(IC.live)}<span>跳到即時</span></button>
+      </div>`;
+    this.wrap.append(this.sel, this.endLine);
+    (this.dock || this.wrap).append(this.bar);
 
     this.bar.addEventListener('pointerdown', e => e.stopPropagation());
     // 按鈕不要拿到焦點，否則之後按空白鍵會同時觸發按鈕和快捷鍵，等於切換兩次
@@ -136,9 +142,8 @@ export class Replay {
       playBtn.innerHTML = SVG(this.playing ? IC.pause : IC.play);
       playBtn.classList.toggle('on', this.playing);
     }
-    this.bar.classList.toggle('playing', this.playing);
     this.bar.querySelector('.rpb-speed').textContent = `${this.speed}x`;
-    this.bar.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('on', +b.dataset.speed === this.speedIdx));
+    this.bar.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('active', +b.dataset.speed === this.speedIdx));
     const cur = this.bars?.[this.bars.length - 1];
     this.bar.querySelector('.rpb-time').textContent = cur ? this.hooks.fmtTime(cur.time) : '';
   }
@@ -178,18 +183,20 @@ export class Replay {
   _xOf(i) { return this.chart.timeScale().logicalToCoordinate(i); }
 
   _drawSel(a, b) {
-    const shade = this.sel.querySelector('.rp-shade'), line = this.sel.querySelector('.rp-line');
-    const w = this.chart.timeScale().width();
+    const shade = this.sel.querySelector('.rp-shade'), line = this.sel.querySelector('.rp-line'), tl = this.sel.querySelector('.rp-time');
     const h = this.chart.panes()[0].getHeight();
     const xa = this._xOf(a);
-    if (b == null || a === b) {
-      line.style.left = `${xa}px`; line.style.height = `${h}px`; line.hidden = false;
-      shade.style.left = `${xa}px`; shade.style.width = `${Math.max(0, w - xa)}px`; shade.style.height = `${h}px`;
-    } else {
-      const x1 = this._xOf(Math.min(a, b)), x2 = this._xOf(Math.max(a, b));
-      line.style.left = `${x1}px`; line.style.height = `${h}px`;
-      shade.style.left = `${x1}px`; shade.style.width = `${x2 - x1}px`; shade.style.height = `${h}px`;
-    }
+    line.style.left = `${xa}px`;
+    line.style.height = `${h}px`;
+    tl.style.left = `${xa}px`;
+    tl.style.top = `${h + 4}px`;
+    tl.textContent = `重播：${this.hooks.fmtTime(this.all[a].time)}`;
+    // 單點選擇不加陰影（和 TradingView 一樣）；拖曳框選時把選到的範圍標出來
+    if (b == null || a === b) { shade.hidden = true; return; }
+    const x1 = this._xOf(Math.min(a, b)), x2 = this._xOf(Math.max(a, b));
+    shade.hidden = false;
+    line.style.left = `${x1}px`;
+    shade.style.left = `${x1}px`; shade.style.width = `${x2 - x1}px`; shade.style.height = `${h}px`;
   }
 
   _bindPick(root) {
@@ -233,7 +240,6 @@ export class Replay {
     this.endLine.hidden = end == null;
     this._ui();
     this._trackEnd();
-    this.hooks.toast?.('重播', end != null ? `已框選 ${end - start} 根K線，按 ▶ 開始播放` : '已選擇起點，按 ▶ 開始播放', 'info');
   }
 
   // 換週期時：用新週期的 K 線接續目前的重播位置（不重置帳戶）

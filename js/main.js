@@ -75,8 +75,9 @@ function fmtVol(v) {
   if (a >= 1e3) return (v / 1e3).toFixed(2) + 'K';
   return a >= 10 ? String(Math.round(v)) : String(+v.toFixed(2));
 }
-const LEVERAGES = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125];
 const roundQty = q => +q.toPrecision(4);
+const cleanMargin = v => (v > 0 ? +(+v).toFixed(2) : null);
+const cleanLeverage = v => (v >= 1 ? +(+v).toFixed(2) : null);
 // 依目前的本金與槓桿，換算在這個價格要開多少數量
 const qtyFor = price => (price ? roundQty((state.trade.margin * state.trade.leverage) / price) : 0);
 const fmtPct = v => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`;
@@ -500,7 +501,6 @@ const levPop = document.createElement('div');
 levPop.className = 'lev-pop';
 levPop.hidden = true;
 wrap.appendChild(levPop);
-const levChips = cur => `<div class="lev-chips">${LEVERAGES.map(l => `<button data-lev="${l}" class="${l === cur ? 'on' : ''}">${l}x</button>`).join('')}</div>`;
 function renderLev() {
   const { margin, leverage } = state.trade;
   $('#qtLevX').textContent = `${leverage}x`;
@@ -512,7 +512,6 @@ function renderLev() {
     <div class="lev-title">本金與槓桿</div>
     <label class="lev-row"><span>本金</span><span class="op-input"><input data-tf="margin" value="${margin}"><span class="op-unit">USDT</span></span></label>
     <label class="lev-row"><span>槓桿</span><span class="op-input"><input data-tf="leverage" value="${leverage}"><span class="op-unit">倍</span></span></label>
-    ${levChips(leverage)}
     <div class="lev-info">
       <div><span>倉位價值</span><b>${money(margin * leverage)} USDT</b></div>
       <div><span>數量（約）</span><b>${q} ${symbolMeta(state.symbol).base}</b></div>
@@ -520,9 +519,8 @@ function renderLev() {
     </div>`;
 }
 function setTrade(patch) {
-  Object.assign(state.trade, patch);
-  state.trade.margin = Math.max(1, +state.trade.margin || 100);
-  state.trade.leverage = Math.min(125, Math.max(1, Math.round(+state.trade.leverage || 1)));
+  if ('margin' in patch) state.trade.margin = cleanMargin(patch.margin) ?? state.trade.margin;
+  if ('leverage' in patch) state.trade.leverage = cleanLeverage(patch.leverage) ?? state.trade.leverage;
   renderLev(); renderTicket(); syncTradeLines(); savePrefs();
 }
 $('#qtLev').addEventListener('click', e => {
@@ -535,7 +533,7 @@ $('#qtLev').addEventListener('click', e => {
 });
 levPop.addEventListener('pointerdown', e => e.stopPropagation());
 levPop.addEventListener('change', e => { const f = e.target.dataset.tf; if (f) setTrade({ [f]: parseFloat(e.target.value) }); });
-levPop.addEventListener('click', e => { const l = e.target.closest('[data-lev]'); if (l) setTrade({ leverage: +l.dataset.lev }); });
+levPop.addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
 document.addEventListener('pointerdown', e => { if (!levPop.hidden && !e.target.closest('.lev-pop, #qtLev')) levPop.hidden = true; });
 
 function ticketRef() {
@@ -579,8 +577,8 @@ function renderTicket() {
       <div class="op-input"><input id="opMargin" value="${state.trade.margin}"><span class="op-unit">USDT</span></div>
     </div>
     <div class="op-field">
-      <div class="op-label"><span>槓桿</span><span>${state.trade.leverage}x</span></div>
-      ${levChips(state.trade.leverage)}
+      <div class="op-label"><span>槓桿</span><span>倍</span></div>
+      <div class="op-input"><input id="opLeverage" value="${state.trade.leverage}"><span class="op-unit">x</span></div>
     </div>
     <div class="op-bracket">
       <label class="op-check"><input type="checkbox" id="opTpOn" ${ticket.tpOn ? 'checked' : ''}>止盈<span class="op-est up" id="opTpEst"></span></label>
@@ -604,7 +602,7 @@ function renderTicket() {
   const num = (id, fn) => $(id)?.addEventListener('change', e => { const v = parseFloat(e.target.value.replace(/,/g, '')); fn(isNaN(v) ? null : v); renderTicket(); syncTradeLines(); });
   num('#opPrice', v => (ticket.price = v));
   $('#opMargin').addEventListener('change', e => setTrade({ margin: parseFloat(e.target.value) }));
-  el.querySelectorAll('.lev-chips [data-lev]').forEach(b => b.onclick = () => setTrade({ leverage: +b.dataset.lev }));
+  $('#opLeverage').addEventListener('change', e => setTrade({ leverage: parseFloat(e.target.value) }));
   num('#opTp', v => (ticket.tp = v));
   num('#opSl', v => (ticket.sl = v));
   $('#opTpOn').onchange = e => { ticket.tpOn = e.target.checked; ticket.tp = null; renderTicket(); syncTradeLines(); };
@@ -756,7 +754,6 @@ function popHtml(d) {
   if (ftbPop === 'trade') return `<div class="ft-pop ft-trade">
       <label class="lev-row"><span>本金</span><span class="op-input"><input data-field="margin" value="${d.margin ?? 100}"><span class="op-unit">USDT</span></span></label>
       <label class="lev-row"><span>槓桿</span><span class="op-input"><input data-field="leverage" value="${d.leverage ?? 10}"><span class="op-unit">倍</span></span></label>
-      <div class="lev-chips">${LEVERAGES.map(l => `<button data-plev="${l}" class="${l === (d.leverage ?? 10) ? 'on' : ''}">${l}x</button>`).join('')}</div>
     </div>`;
   if (ftbPop === 'lsize') return `<div class="ft-pop ft-list">${[9, 10, 11, 12, 13, 14].map(s => `<button data-lsize="${s}" class="${s === (d.labelSize ?? 11) ? 'on' : ''}">${s}${s === 11 ? '（預設）' : ''}</button>`).join('')}</div>`;
   if (ftbPop === 'size') return `<div class="ft-pop ft-list">${[10, 12, 14, 16, 20, 24, 28, 40].map(s => `<button data-size="${s}" class="${s === d.size ? 'on' : ''}">${s}</button>`).join('')}</div>`;
@@ -776,18 +773,18 @@ ftb.addEventListener('change', e => {
   const f = e.target.dataset.field, d = drawings.selected;
   if (!f || !d) return;
   const v = parseFloat(e.target.value);
-  if (v > 0) drawings.setStyle({ [f]: f === 'leverage' ? Math.min(125, Math.max(1, Math.round(v))) : v });
+  const val = f === 'leverage' ? cleanLeverage(v) : cleanMargin(v);
+  if (val != null) drawings.setStyle({ [f]: val });
 });
 ftb.addEventListener('click', e => {
   const d = drawings.selected;
   if (!d) return;
-  const t = e.target.closest('[data-pop],[data-act],[data-color],[data-width],[data-style],[data-size],[data-lsize],[data-plev]');
+  const t = e.target.closest('[data-pop],[data-act],[data-color],[data-width],[data-style],[data-size],[data-lsize]');
   if (!t) return;
   if (t.dataset.pop) { ftbPop = ftbPop === t.dataset.pop ? null : t.dataset.pop; renderFloatTb(d); return; }
   if (t.dataset.act === 'delete') { drawings.deleteSelected(); return; }
   if (t.dataset.act === 'lock') { drawings.setStyle({ locked: !d.locked }); return; }
   if (t.dataset.act === 'stats') { drawings.setStyle({ hideStats: !d.hideStats }); return; }
-  if (t.dataset.plev) { drawings.setStyle({ leverage: +t.dataset.plev }); return; }
   if (t.dataset.act === 'settings') { toast('示範版', '繪圖設定對話框尚未實作，可用左邊的顏色/線寬調整', 'info'); return; }
   ftbPop = null;
   if (t.dataset.color) drawings.setStyle({ color: t.dataset.color });
@@ -800,32 +797,53 @@ ftb.addEventListener('click', e => {
 // ================= 右鍵選單 =================
 const ctx = $('#ctxMenu');
 // 在指定價位下單的選單（右鍵、價格軸旁的「＋」共用）
+const MI = {
+  alert: '<path fill="none" stroke="currentColor" d="M20.5 14a6.5 6.5 0 1 1-6.5-6.5M14 10.5V14l2 2M7 7.5l2-2M19 5.5v5M16.5 8h5"/>',
+  sell: '<path fill="none" stroke="currentColor" d="M8 11l6 6 6-6"/>',
+  buy: '<path fill="none" stroke="currentColor" d="M8 17l6-6 6 6"/>',
+  order: '<path fill="none" stroke="currentColor" d="M6.5 8.5h15v11h-15zM9.5 16.5l3-3 2 2 4-4M17.5 11.5h1.5V13"/>',
+  hline: '<path fill="none" stroke="currentColor" d="M5 14h18"/>',
+  reset: '<path fill="none" stroke="currentColor" d="M20.5 14a6.5 6.5 0 1 1-2-4.7M18.5 6v3.5H15"/>',
+  tree: '<path fill="none" stroke="currentColor" d="M14 7.5l7.5 4-7.5 4-7.5-4zM6.5 15l7.5 4 7.5-4"/>',
+  trash: '<path fill="none" stroke="currentColor" d="M17.5 9.5V7.5a1.5 1.5 0 0 0-1.5-1.5h-4a1.5 1.5 0 0 0-1.5 1.5v2M6.5 9.5h15M8.5 9.5l1 13h9l1-13"/>',
+  gear: '<path fill="none" stroke="currentColor" d="M10.3 6.5h7.4L21.5 14l-3.8 7.5h-7.4L6.5 14z"/><circle cx="14" cy="14" r="2.8" fill="none" stroke="currentColor"/>',
+};
+const mi = k => (k ? `<svg viewBox="0 0 28 28" width="28" height="28">${MI[k]}</svg>` : '');
+// 在指定價位下單的選單（右鍵、價格軸旁的「＋」共用）
 function openOrderMenu(x, y, price, { compact = false } = {}) {
   const r = wrap.getBoundingClientRect();
   const { bid, ask } = bidAsk();
   const q = qtyFor(price);
   const lev = state.trade.leverage;
   const tag = `${state.trade.margin}U×${lev}x`;
-  const items = [];
   const sym = displaySymbol(state.symbol);
+  const items = [];
   if (price != null && ask != null) {
     const buyType = price < ask ? 'limit' : 'stop';
     const sellType = price > bid ? 'limit' : 'stop';
+    if (!compact) items.push({ icon: '', label: `複製價格 ${fmt(price)}`, fn: () => { navigator.clipboard?.writeText(fmt(price)); toast('已複製', fmt(price), 'info'); } }, 'sep');
     items.push(
-      { html: `<span class="ctx-ic buy">▲</span><span>買入 ${sym} ${tag} @ <span class="buy">${fmt(price)}</span> ${typeText(buyType)}</span>`, fn: () => broker.placeOrder({ symbol: state.symbol, side: 'buy', type: buyType, qty: q, price, leverage: lev }) },
-      { html: `<span class="ctx-ic sell">▼</span><span>賣出 ${sym} ${tag} @ <span class="sell">${fmt(price)}</span> ${typeText(sellType)}</span>`, fn: () => broker.placeOrder({ symbol: state.symbol, side: 'sell', type: sellType, qty: q, price, leverage: lev }) },
-      { html: '<span class="ctx-ic">＋</span><span>建立新訂單…</span>', fn: () => { ticket.side = price < ask ? 'buy' : 'sell'; ticket.type = ticket.side === 'buy' ? buyType : sellType; ticket.price = price; ticket.tp = ticket.sl = null; showView('viewOrder'); } },
-      { html: `<span class="ctx-ic">—</span><span>在 ${fmt(price)} 繪製水平線</span>`, fn: () => { drawings.list.push({ type: 'hline', color: BLUE, width: 1, p: [{ t: 0, price }] }); drawings._commit(); } },
+      { icon: 'alert', label: `在${fmt(price)}增加關於${sym}的快訊…`, key: 'Alt + A', fn: () => toast('示範版', '快訊尚未實作', 'info') },
+      { icon: 'sell', label: `賣出 ${tag} ${sym} @ ${fmt(price)} ${typeText(sellType)}`, key: 'Alt + Shift + S', fn: () => broker.placeOrder({ symbol: state.symbol, side: 'sell', type: sellType, qty: q, price, leverage: lev }) },
+      { icon: 'buy', label: `買入 ${tag} ${sym} @ ${fmt(price)} ${typeText(buyType)}`, key: 'Alt + Shift + B', fn: () => broker.placeOrder({ symbol: state.symbol, side: 'buy', type: buyType, qty: q, price, leverage: lev }) },
+      { icon: 'order', label: `在${sym}以${fmt(price)}新增訂單…`, key: 'Shift + T', fn: () => { ticket.side = price < ask ? 'buy' : 'sell'; ticket.type = ticket.side === 'buy' ? buyType : sellType; ticket.price = price; ticket.tp = ticket.sl = null; showView('viewOrder'); } },
+      { icon: 'hline', label: `在${fmt(price)}繪製水平線`, key: 'Alt + H', fn: () => { drawings.list.push({ type: 'hline', color: BLUE, width: 1, p: [{ t: 0, price }] }); drawings._commit(); } },
     );
   }
   if (!compact) {
-    if (items.length) items.push('sep');
-    items.push(
-      { html: '<span class="ctx-ic">⟲</span><span>重設圖表視圖</span>', fn: resetView },
-      { html: `<span class="ctx-ic">🗑</span><span>移除 ${drawings.list.length} 個繪圖</span>`, fn: () => drawings.clear() },
+    items.push('sep',
+      { icon: 'reset', label: '重設圖表視圖', key: 'Alt + R', fn: resetView },
+      { icon: 'tree', label: '物件樹', fn: () => showView('viewTree') },
+      'sep',
+      ...(drawings.list.length || indicators.list.length || state.volumeVisible ? ['sep'] : []),
+      ...(drawings.list.length ? [{ icon: 'trash', label: `移除${drawings.list.length}繪圖`, fn: () => drawings.clear() }] : []),
+      ...(indicators.list.length || state.volumeVisible ? [{ icon: 'trash', label: `移除${indicators.list.length + (state.volumeVisible ? 1 : 0)}指標`, fn: () => { [...indicators.list].forEach(i => indicators.remove(i.id)); state.volumeVisible = false; volumeSeries.applyOptions({ visible: false }); renderLegend(); savePrefs(); } }] : []),
+      'sep',
+      { icon: 'gear', label: '設定…', fn: () => { renderPsMenu(); psMenu.classList.add('open'); } },
     );
   }
-  ctx.innerHTML = items.map((it, i) => it === 'sep' ? '<div class="ctx-sep"></div>' : `<button class="ctx-item" data-i="${i}">${it.html}</button>`).join('');
+  ctx.innerHTML = items.map((it, i) => it === 'sep' ? '<div class="dd-sep"></div>'
+    : `<button class="ctx-item" data-i="${i}"><span class="ctx-ic">${mi(it.icon)}</span><span class="ctx-label">${it.label}</span>${it.key ? `<span class="ctx-key">${it.key}</span>` : ''}</button>`).join('');
   ctx.querySelectorAll('.ctx-item').forEach(b => b.onclick = () => { ctx.classList.remove('open'); items[+b.dataset.i].fn(); });
   ctx.classList.add('open');
   ctx.style.left = `${Math.max(4, Math.min(x, r.width - ctx.offsetWidth - 4))}px`;
@@ -858,10 +876,21 @@ chart.subscribeCrosshairMove(param => {
   plusBtn.style.left = `${chart.timeScale().width() - 24}px`;
 });
 plusBtn.addEventListener('pointerdown', e => e.stopPropagation());
+document.addEventListener('keydown', e => {
+  if (!e.altKey || e.ctrlKey || e.target.matches('input, textarea')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'r' && !e.shiftKey) { e.preventDefault(); resetView(); return; }
+  if (!e.shiftKey || (k !== 's' && k !== 'b') || plusPrice == null) return;
+  e.preventDefault();
+  const { bid, ask } = bidAsk();
+  const side = k === 'b' ? 'buy' : 'sell';
+  const type = side === 'buy' ? (plusPrice < ask ? 'limit' : 'stop') : (plusPrice > bid ? 'limit' : 'stop');
+  broker.placeOrder({ symbol: state.symbol, side, type, qty: qtyFor(plusPrice), price: plusPrice, leverage: state.trade.leverage });
+});
 plusBtn.addEventListener('mouseleave', () => { plusBtn.hidden = true; });
 plusBtn.addEventListener('click', e => {
   e.stopPropagation();
-  openOrderMenu(chart.timeScale().width() - 4 - 300, plusY + 14, plusPrice, { compact: true });
+  openOrderMenu(chart.timeScale().width() - 4 - 362, plusY + 14, plusPrice, { compact: true });
 });
 function resetView() {
   chart.timeScale().resetTimeScale();
@@ -1066,22 +1095,22 @@ function renderDetails() {
   const last = state.bars[state.bars.length - 1]?.close ?? t?.last;
   const open = t?.open ?? state.bars[0]?.open;
   const chg = last - open, pct = (chg / open) * 100, cls = chg >= 0 ? 'up' : 'down';
-  const lo = t?.low ?? last, hi = t?.high ?? last;
-  const pos = hi > lo ? ((last - lo) / (hi - lo)) * 100 : 50;
+  // 平均成交量：用目前載入的日內 K 線推估 24 小時成交量
+  const per = Math.max(1, Math.round(86400 / intervalSec(state.interval)));
+  const recent = state.bars.slice(-per * 30);
+  const avg = recent.length ? (recent.reduce((a, b) => a + b.volume, 0) / recent.length) * per : null;
+  const vol = t?.volume ?? null;
+  const ratio = vol && avg ? Math.min(1, vol / (vol + avg)) : 0.5;
   $('#details').innerHTML = `
-    <div class="dt-head"><span class="wl-ic" style="background:${m.color};width:24px;height:24px;font-size:13px">${m.icon}</span>${displaySymbol(s)}</div>
-    <div class="dt-sub">${m.desc} · ${EXCHANGE} · 加密貨幣</div>
-    <div class="dt-price">${fmt(last)}<small>USDT</small></div>
+    <div class="dt-head"><span class="wl-ic" style="background:${m.color};width:24px;height:24px;font-size:13px">${m.icon}</span><b>${displaySymbol(s)}</b></div>
+    <div class="dt-sub">${m.desc} · ${EXCHANGE.toUpperCase()}<br><span>Swap · Crypto</span></div>
+    <div class="dt-price ${cls}">${fmt(last)}<small>USDT</small></div>
     <div class="dt-chg ${cls}">${signed(chg)} &nbsp;${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(2)}%</div>
-    <div class="dt-range">當日範圍
-      <div class="dt-bar"><i style="left:calc(${Math.max(0, Math.min(100, pos))}% - 1px)"></i></div>
-      <div class="dt-bar-lab"><span>${fmt(lo)}</span><span>${fmt(hi)}</span></div>
-    </div>
-    <div class="dt-grid">
-      <div><span>24h 成交量</span><b>${fmtVol(t?.volume)} ${m.base}</b></div>
-      <div><span>24h 成交額</span><b>${fmtVol(t?.quoteVolume)} USDT</b></div>
-      <div><span>24h 最高</span><b>${fmt(hi)}</b></div>
-      <div><span>24h 最低</span><b>${fmt(lo)}</b></div>
+    <div class="dt-open"><i></i>開市</div>
+    <div class="dt-vol">
+      <div class="dt-vol-row"><span>成交量</span><span>平均成交量 (30天)</span></div>
+      <div class="dt-vol-row"><b>${fmtVol(vol)}</b><b>${fmtVol(avg)}</b></div>
+      <div class="dt-vol-bar"><i style="width:${(ratio * 100).toFixed(1)}%"></i></div>
     </div>`;
 }
 $('#watchlist').addEventListener('click', e => {
@@ -1152,14 +1181,21 @@ function showView(id) {
 $$('#rightbar .rb-tool[data-view]').forEach(b => b.onclick = () => showView(state.rightView === b.dataset.view ? null : b.dataset.view));
 
 // ================= 頂部工具列 =================
+const collapsedGroups = new Set();
 function renderIntervals() {
   const shown = INTERVALS.filter(i => state.favorites.includes(i.id) || i.id === state.interval);
   $('#intervalGroup').innerHTML = shown.map(i => `<button class="tb-btn tb-interval ${i.id === state.interval ? 'active' : ''}" data-id="${i.id}">${i.label}</button>`).join('');
-  let html = '', group = '';
-  for (const i of INTERVALS) {
-    if (i.group !== group) { group = i.group; html += `<div class="dd-sec">${group}</div>`; }
-    const fav = state.favorites.includes(i.id);
-    html += `<button class="dd-item ${i.id === state.interval ? 'active' : ''}" data-id="${i.id}">${i.label}<span class="star ${fav ? 'on' : ''}" data-star="${i.id}" title="${fav ? '從我的最愛移除' : '加入我的最愛'}">${fav ? '★' : '☆'}</span></button>`;
+  const chev = up => `<svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="${up ? 'M5 11l4-4 4 4' : 'M5 7l4 4 4-4'}"/></svg>`;
+  let html = '<button class="dd-item soon-iv"><svg viewBox="0 0 28 28" width="28" height="28"><path fill="none" stroke="currentColor" d="M14 7v14M7 14h14"/></svg>增加自訂週期…</button>';
+  const groups = [...new Set(INTERVALS.map(i => i.group))];
+  for (const g of groups) {
+    const closed = collapsedGroups.has(g);
+    html += `<div class="dd-sep"></div><button class="dd-sec dd-sec-btn" data-group="${g}">${g}${chev(!closed)}</button>`;
+    if (closed) continue;
+    for (const i of INTERVALS.filter(x => x.group === g)) {
+      const fav = state.favorites.includes(i.id);
+      html += `<button class="dd-item ${i.id === state.interval ? 'active' : ''}" data-id="${i.id}">${i.menu}<span class="star ${fav ? 'on' : ''}" data-star="${i.id}" title="${fav ? '從我的最愛移除' : '加入我的最愛'}">★</span></button>`;
+    }
   }
   $('#intervalMenu').innerHTML = html;
 }
@@ -1169,6 +1205,14 @@ $('#intervalGroup').addEventListener('click', e => {
 });
 $('#intervalCaret').onclick = e => { e.stopPropagation(); $('#intervalMenu').classList.toggle('open'); };
 $('#intervalMenu').addEventListener('click', e => {
+  const grp = e.target.closest('[data-group]');
+  if (grp) {
+    const g = grp.dataset.group;
+    collapsedGroups.has(g) ? collapsedGroups.delete(g) : collapsedGroups.add(g);
+    renderIntervals();
+    return;
+  }
+  if (e.target.closest('.soon-iv')) { toast('示範版', '自訂週期尚未實作', 'info'); return; }
   const star = e.target.closest('[data-star]');
   if (star) {
     const id = star.dataset.star;
@@ -1215,6 +1259,7 @@ $$('.soon').forEach(b => b.addEventListener('click', () => toast('示範版', '�
 
 // ---------- 對話框 ----------
 function openModal(html, onOpen) {
+  $('#modal').className = 'modal';
   $('#modal').innerHTML = html;
   $('#modalBack').hidden = false;
   $('#modal .md-close')?.addEventListener('click', closeModal);
@@ -1226,13 +1271,23 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal
 
 const SEARCH_ICON = '<svg viewBox="0 0 18 18" width="18" height="18"><path fill="currentColor" d="M3.5 8a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM8 2a6 6 0 1 0 3.65 10.76l3.58 3.58 1.06-1.06-3.58-3.58A6 6 0 0 0 8 2Z"/></svg>';
 function openSymbolSearch(initial = '') {
+  const cats = ['全部', '股票', '基金', '期貨', '外匯', '加密貨幣', '指數', '債券', '經濟', '期權'];
   openModal(`
-    <div class="md-head">商品代碼搜尋<div class="tb-spacer"></div><button class="md-close">×</button></div>
-    <div class="md-search">${SEARCH_ICON}<input id="symQ" placeholder="商品代碼，例如 BTCUSDT.P" spellcheck="false"></div>
-    <div class="md-list" id="symList"></div>`, () => {
+    <div class="sym-top">
+      ${SEARCH_ICON}<input id="symQ" placeholder="搜尋" spellcheck="false">
+      <button class="sym-clear" id="symClear" title="清除"><svg viewBox="0 0 18 18" width="18" height="18"><circle cx="9" cy="9" r="7" fill="currentColor"/><path stroke="#1e1e1e" stroke-width="1.5" d="M6.5 6.5l5 5M11.5 6.5l-5 5"/></svg></button>
+    </div>
+    <div class="sym-chips">${cats.map((c, i) => `<button class="chip ${i === 0 || c === '加密貨幣' && false ? 'on' : ''}" data-cat="${c}">${c}</button>`).join('')}</div>
+    <div class="md-list sym-list" id="symList"></div>`, () => {
+    $('#modal').classList.add('modal-sym');
     const q = $('#symQ');
     q.value = initial;
     let kbd = 0, results = [];
+    const hl = (text, v) => {
+      if (!v) return text;
+      const i = text.toUpperCase().indexOf(v);
+      return i < 0 ? text : `${text.slice(0, i)}<em>${text.slice(i, i + v.length)}</em>${text.slice(i + v.length)}`;
+    };
     const render = () => {
       const v = q.value.trim().toUpperCase().replace(/\.P$/, '');
       results = Object.keys(SYMBOLS).filter(s => s.includes(v) || SYMBOLS[s].desc.toUpperCase().includes(v));
@@ -1240,8 +1295,10 @@ function openSymbolSearch(initial = '') {
       kbd = Math.min(kbd, Math.max(0, results.length - 1));
       $('#symList').innerHTML = results.map((s, i) => {
         const m = symbolMeta(s);
-        return `<div class="md-item ${i === kbd ? 'kbd' : ''}" data-sym="${s}"><span class="wl-ic" style="background:${m.color};width:24px;height:24px;font-size:12px">${m.icon}</span>
-          <span class="md-sym">${displaySymbol(s)}</span><span class="md-desc">${m.desc}</span><span class="md-ex">永續合約 · ${EXCHANGE}</span></div>`;
+        return `<div class="sym-row ${i === kbd ? 'kbd' : ''}" data-sym="${s}">
+          <span class="sym-ic" style="background:${m.color}">${m.icon}</span>
+          <div class="sym-main"><div class="sym-code">${hl(displaySymbol(s), v)}</div><div class="sym-desc">${m.desc}<span class="sym-tag">SWAP CRYPTO</span></div></div>
+          <span class="sym-ex">${EXCHANGE.toUpperCase()}</span></div>`;
       }).join('') || '<div class="pt-empty">找不到符合的商品</div>';
     };
     const pick = async s => {
@@ -1255,12 +1312,21 @@ function openSymbolSearch(initial = '') {
       if (e.key === 'ArrowUp') { kbd = Math.max(0, kbd - 1); render(); e.preventDefault(); }
       if (e.key === 'Enter' && results[kbd]) pick(results[kbd]);
     };
-    $('#symList').onclick = e => { const it = e.target.closest('.md-item'); if (it) pick(it.dataset.sym); };
+    $('#symClear').onclick = () => { q.value = ''; render(); q.focus(); };
+    $('#modal .sym-chips').onclick = e => {
+      const c = e.target.closest('.chip');
+      if (!c) return;
+      $$('#modal .chip').forEach(x => x.classList.toggle('on', x === c));
+      if (!['全部', '加密貨幣'].includes(c.dataset.cat)) $('#symList').innerHTML = '<div class="pt-empty">示範版只提供加密貨幣永續合約</div>';
+      else render();
+    };
+    $('#symList').onclick = e => { const it = e.target.closest('.sym-row'); if (it) pick(it.dataset.sym); };
     render();
     q.focus();
+    q.select();
   });
 }
-$('#symbolBtn').onclick = () => openSymbolSearch();
+$('#symbolBtn').onclick = () => openSymbolSearch(displaySymbol(state.symbol));
 document.addEventListener('keydown', e => {
   if (!$('#modalBack').hidden || e.target.matches('input, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
   if (/^[a-zA-Z]$/.test(e.key)) { e.preventDefault(); openSymbolSearch(e.key.toUpperCase()); }
@@ -1268,26 +1334,61 @@ document.addEventListener('keydown', e => {
 
 function openIndicators() {
   const items = [{ type: 'VOL', name: '成交量', short: 'Volume' }, ...Object.entries(INDICATORS).map(([type, d]) => ({ type, name: d.name, short: d.short }))];
+  const side = [
+    ['個人的', [['user', '我的腳本'], ['bag', '已購買']]],
+    ['內建', [['chart', '技術分析'], ['bars', '基本面']]],
+    ['社群', [['star', '編輯精選'], ['bars', '最熱門'], ['fire', '趨勢'], ['bag', '市場']]],
+  ];
+  const ic = {
+    user: '<circle cx="14" cy="10.5" r="3.5" fill="none" stroke="currentColor"/><path fill="none" stroke="currentColor" d="M7.5 21.5a6.5 6.5 0 0 1 13 0"/>',
+    bag: '<path fill="none" stroke="currentColor" d="M7.5 10.5h13v11h-13zM11 10.5V9a3 3 0 0 1 6 0v1.5"/>',
+    chart: '<path fill="none" stroke="currentColor" d="M6.5 21.5v-15M6.5 21.5h15M9.5 18.5v-3M13 18.5v-6M16.5 18.5v-4M20 18.5v-8M9 12l4-3.5 3.5 2.5L21 6.5"/>',
+    bars: '<path fill="none" stroke="currentColor" d="M7.5 21.5v-6h3v6M12.5 21.5v-11h3v11M17.5 21.5v-15h3v15M6 21.5h16"/>',
+    star: '<path fill="none" stroke="currentColor" d="M9.5 6.5h9v15l-4.5-3-4.5 3z"/>',
+    fire: '<path fill="none" stroke="currentColor" d="M14 21.5a5.5 5.5 0 0 1-5.5-5.5c0-3.5 3.5-5 3.5-9 2.5 1.5 4 4 4 6 1-1 1.5-2 1.5-3 1.5 1.5 2 3.5 2 6a5.5 5.5 0 0 1-5.5 5.5z"/>',
+  };
   openModal(`
-    <div class="md-head">技術指標、指標和策略<div class="tb-spacer"></div><button class="md-close">×</button></div>
-    <div class="md-search">${SEARCH_ICON}<input id="indQ" class="nocase" placeholder="搜尋" spellcheck="false"></div>
-    <div class="md-sec">技術指標</div>
-    <div class="md-list" id="indList"></div>`, () => {
+    <div class="ind-head"><span>指標、衡量標準和策略</span><button class="md-close" title="關閉"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M3 3l12 12M15 3L3 15"/></svg></button></div>
+    <div class="ind-search">${SEARCH_ICON}<input id="indQ" class="nocase" placeholder="搜尋" spellcheck="false"></div>
+    <div class="ind-body">
+      <div class="ind-side">${side.map(([sec, list]) => `<div class="ind-sec">${sec}</div>${list.map(([k, n]) =>
+        `<button class="ind-side-item ${n === '技術分析' ? 'active' : ''}" data-side="${n}"><svg viewBox="0 0 28 28" width="28" height="28">${ic[k]}</svg>${n}</button>`).join('')}`).join('')}</div>
+      <div class="ind-main">
+        <div class="sym-chips ind-chips">${['指標', '策略', '簡介', '形態'].map((c, i) => `<button class="chip ${i === 0 ? 'on' : ''}" data-chip="${c}">${c}</button>`).join('')}</div>
+        <div class="ind-colhead">腳本名稱</div>
+        <div class="ind-list" id="indList"></div>
+      </div>
+    </div>`, () => {
+    $('#modal').classList.add('modal-ind');
+    let tab = '技術分析', chip = '指標';
     const render = () => {
+      if (tab !== '技術分析' || chip !== '指標') { $('#indList').innerHTML = '<div class="pt-empty">示範版只提供內建的技術指標</div>'; return; }
       const v = $('#indQ').value.trim().toLowerCase();
       $('#indList').innerHTML = items.filter(i => !v || i.name.includes(v) || i.short.toLowerCase().includes(v))
-        .map(i => `<div class="md-item" data-type="${i.type}"><span class="md-desc" style="color:var(--text)">${i.name}</span><span class="md-ex">${i.short}</span></div>`).join('');
+        .map(i => `<button class="ind-item" data-type="${i.type}"><span>${i.name}</span><span class="ind-short">${i.short}</span></button>`).join('');
     };
     $('#indQ').oninput = render;
+    $('#modal .ind-side').onclick = e => {
+      const b = e.target.closest('.ind-side-item'); if (!b) return;
+      tab = b.dataset.side;
+      $$('#modal .ind-side-item').forEach(x => x.classList.toggle('active', x === b));
+      render();
+    };
+    $('#modal .ind-chips').onclick = e => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      chip = b.dataset.chip;
+      $$('#modal .ind-chips .chip').forEach(x => x.classList.toggle('on', x === b));
+      render();
+    };
     $('#indList').onclick = e => {
-      const it = e.target.closest('.md-item');
+      const it = e.target.closest('.ind-item');
       if (!it) return;
       if (it.dataset.type === 'VOL') {
         state.volumeVisible = true;
         volumeSeries.applyOptions({ visible: true });
         renderLegend(); renderTree(); savePrefs();
       } else indicators.add(it.dataset.type);
-      toast('已新增指標', it.querySelector('.md-desc').textContent, 'ok');
+      toast('已新增指標', it.querySelector('span').textContent, 'ok');
     };
     render();
     $('#indQ').focus();
@@ -1460,7 +1561,7 @@ function leaveReplayBroker() {
   $('.broker span:last-child').textContent = '模擬交易';
 }
 const replay = new Replay({
-  chart, wrap, captureRoot: $('#center'),
+  chart, wrap, dock: $('#replayDock'), captureRoot: $('#center'),
   hooks: {
     getBars: () => state.bars,
     applyBars(bars, mode) {
@@ -1551,21 +1652,6 @@ async function switchReplayInterval(interval) {
 function renderRecMenu() {
   $$('#recMenu [data-area]').forEach(b => b.classList.toggle('on', b.dataset.area === recPrefs.area));
 }
-// 只錄圖表區時，把重播控制列暫時移到圖表外面，這樣按播放/暫停時控制列不會被錄進影片
-function placeReplayBar(detach) {
-  const bar = replay.bar;
-  if (detach) {
-    const r = wrap.getBoundingClientRect();
-    document.body.appendChild(bar);
-    bar.classList.add('detached');
-    bar.style.left = `${r.left + r.width / 2}px`;
-    bar.style.top = `${r.bottom - 44 - 44}px`;
-  } else if (bar.parentElement !== wrap) {
-    wrap.appendChild(bar);
-    bar.classList.remove('detached');
-    bar.style.left = bar.style.top = '';
-  }
-}
 const recorder = new Recorder({
   getTarget: () => wrap,
   fileName: () => {
@@ -1581,11 +1667,9 @@ const recorder = new Recorder({
       const t = Math.floor(st.elapsed || 0);
       $('#recText').textContent = `${pad(Math.floor(t / 60))}:${pad(t % 60)} 停止`;
       btn.title = '停止錄影並下載影片';
-      if (st.areaMode === 'element' && !replay.bar.classList.contains('detached')) placeReplayBar(true);
     } else {
       $('#recText').textContent = '錄影';
       btn.title = '錄影（錄下圖表畫面，停止後自動下載影片）';
-      placeReplayBar(false);
     }
   },
 });
@@ -1603,7 +1687,6 @@ $('#recStart').onclick = () => {
   $('#recMenu').classList.remove('open');
   recorder.start({ area: recPrefs.area, fps: recPrefs.fps, scale: recPrefs.scale });
 };
-window.addEventListener('resize', () => { if (replay.bar.classList.contains('detached')) placeReplayBar(true); });
 
 // ================= 提示 =================
 function toast(title, text, kind = 'info') {

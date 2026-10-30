@@ -40,7 +40,7 @@ export const TOOL_NAMES = {
   fib: '斐波那契回撤', fibtime: '斐波那契時間週期', abcd: 'ABCD 型態', xabcd: 'XABCD 型態',
   pricerange: '價格範圍', daterange: '日期範圍', datepricerange: '日期和價格範圍', measure: '測量',
   brush: '筆刷', highlighter: '螢光筆', text: '文字', pricelabel: '價格標籤', emoji: '圖示',
-  long: '多頭部位', short: '空頭部位',
+  long: '多頭倉位', short: '空頭倉位',
 };
 
 class DrawingLayer {

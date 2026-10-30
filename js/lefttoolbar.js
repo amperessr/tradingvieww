@@ -58,7 +58,7 @@ export const GROUPS = [
   { id: 'lines', title: '趨勢線工具', sections: [['線條', ['trend', 'ray', 'extended', 'arrow_tool']], ['水平 / 垂直', ['hline', 'hray', 'vline', 'crossline']], ['通道', ['channel']]] },
   { id: 'fibs', title: '江恩與斐波那契工具', sections: [['斐波那契', ['fib', 'fibtime']]] },
   { id: 'patterns', title: '型態', sections: [['諧波型態', ['xabcd', 'abcd']]] },
-  { id: 'forecast', title: '預測和測量工具', sections: [['預測', ['long', 'short']], ['測量工具', ['pricerange', 'daterange', 'datepricerange']]] },
+  { id: 'forecast', title: '預測和測量工具', sections: [['預測', ['long', 'short']], ['測量', ['pricerange', 'daterange', 'datepricerange']]] },
   { id: 'shapes', title: '幾何形狀', sections: [['筆刷', ['brush', 'highlighter']], ['形狀', ['rect', 'circle']]] },
   { id: 'annot', title: '註解工具', sections: [['文字與註解', ['text', 'pricelabel']]] },
   { id: 'icons', title: '圖示', emoji: true },
@@ -130,6 +130,7 @@ export function buildLeftToolbar({ root, flyout, drawings, saved = {}, onCursorM
     let html = '';
     if (g.sections) {
       for (const [sec, ids] of g.sections) {
+        if (html) html += '<div class="dd-sep"></div>';
         if (sec) html += `<div class="fo-sec">${sec}</div>`;
         for (const id of ids) {
           const activeTool = (id === 'cross' || id === 'dot' || id === 'arrow') ? false : (TOOL_TYPE[id] || id) === drawings.tool;

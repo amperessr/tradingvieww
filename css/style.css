@@ -10,6 +10,12 @@
   --text-2: #b8b8b8;
   --muted: #8c8c8c;
   --dim: #575757;
+  --menu-bg: #1e1e1e;      /* 選單／對話框底色（TradingView：比畫面底色亮一階） */
+  --menu-text: #b8b8b8;    /* 選單文字 */
+  --menu-sec: #8c8c8c;     /* 選單分段標題、快捷鍵 */
+  --menu-sep: #434343;     /* 分隔線 */
+  --menu-hover: #2e2e2e;
+  --chip-bg: #2a2a2a;
   --blue: #2962ff;
   --blue-hover: #1e53e5;
   --up: #089981;
@@ -533,3 +539,144 @@ body.recording .ps-plus { display: none !important; }
 .ft-trade { width: 260px; display: flex; flex-direction: column; gap: 8px; }
 .ft-trade-btn span { font-size: 12px; white-space: nowrap; }
 .tb-wm.active { color: var(--blue); }
+
+
+/* ================================================================
+   TradingView 樣式校正（數值取自 TradingView 網頁版實際 CSS）
+   ================================================================ */
+/* 選單共用：底色、圓角、無外框、14px #b8b8b8 */
+.dd-menu, .flyout, .ctx-menu, .rpb-menu {
+  background: var(--menu-bg); border: 0; border-radius: 8px; padding: 6px 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,.25), 0 8px 24px rgba(0,0,0,.6); color: var(--menu-text);
+}
+.dd-item, .fo-item, .ctx-item {
+  width: calc(100% - 8px); margin: 0 4px; border-radius: 6px; font-size: 14px; color: var(--menu-text); text-align: left;
+}
+.dd-item { height: 32px; padding: 0 8px; }
+.dd-item:hover, .fo-item:hover, .ctx-item:hover { background: var(--menu-hover); color: var(--text); }
+.dd-item.active, .fo-item.active { background: #f2f2f2; color: #0f0f0f; }
+.dd-item.active svg, .fo-item.active svg { color: #0f0f0f; }
+.dd-sec, .fo-sec { padding: 4px 12px 2px; font-size: 11px; line-height: 16px; color: var(--menu-sec); letter-spacing: 0; text-transform: uppercase; }
+.dd-sec-btn { display: flex; align-items: center; justify-content: space-between; width: 100%; text-align: left; }
+.dd-sec-btn:hover { color: var(--text); }
+.dd-sep { height: 1px; background: var(--menu-sep); margin: 6px 0; }
+.ctx-sep { background: var(--menu-sep); }
+
+/* 週期選單 */
+#intervalMenu { min-width: 150px; max-height: calc(100vh - 60px); overflow: auto; }
+#intervalMenu .dd-item { gap: 0; }
+#intervalMenu .soon-iv { gap: 6px; padding-left: 2px; }
+#intervalMenu .star { margin-left: auto; color: var(--menu-sec); visibility: hidden; font-size: 13px; }
+#intervalMenu .dd-item:hover .star, #intervalMenu .star.on { visibility: visible; }
+#intervalMenu .star.on { color: #ffca3a; }
+#intervalMenu .dd-item.active .star { color: #0f0f0f; }
+#intervalMenu .dd-item.active .star.on { color: #e0a800; }
+
+/* 右鍵選單 */
+.ctx-menu { width: 362px; min-width: 0; }
+.ctx-item { height: 32px; padding: 0 12px 0 4px; gap: 4px; }
+.ctx-item .ctx-ic { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; }
+.ctx-item .ctx-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-item .ctx-key { margin-left: 16px; font-size: 12px; color: #6d6d6d; white-space: nowrap; }
+
+/* 左側工具群組選單 */
+.flyout { min-width: 260px; }
+.fo-item { height: 40px; padding: 0 12px 0 6px; }
+.fo-item .fo-key { color: #6d6d6d; }
+
+/* 對話框共用 */
+.modal-back { background: rgba(0,0,0,.6); }
+.modal { background: var(--menu-bg); border-radius: 12px; color: var(--menu-text); box-shadow: 0 2px 4px rgba(0,0,0,.25), 0 16px 48px rgba(0,0,0,.6); }
+.md-close { width: 34px; height: 34px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--menu-text); }
+.md-close:hover { background: var(--menu-hover); color: var(--text); }
+.chip { height: 30px; padding: 0 12px; border-radius: 15px; background: var(--chip-bg); color: var(--menu-text); font-size: 14px; }
+.chip:hover { background: #3a3a3a; color: var(--text); }
+.chip.on { background: #f2f2f2; color: #0f0f0f; }
+.sym-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* 商品搜尋 */
+.modal.modal-sym { width: 840px; max-height: 70vh; padding: 0 0 8px; }
+.sym-top { display: flex; align-items: center; gap: 12px; height: 64px; padding: 0 20px; flex: none; }
+.sym-top svg { color: var(--menu-text); width: 20px; height: 20px; }
+.sym-top input { flex: 1; background: none; border: 0; outline: none; font-size: 18px; color: var(--text); text-transform: uppercase; }
+.sym-clear { color: #6d6d6d; display: flex; }
+.sym-clear:hover { color: var(--text); }
+.modal-sym .sym-chips { padding: 0 20px 12px; flex: none; }
+.sym-list { padding: 0; }
+.sym-row { display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 20px; cursor: pointer; }
+.sym-row:hover, .sym-row.kbd { background: var(--menu-hover); }
+.sym-ic { width: 32px; height: 32px; border-radius: 50%; color: #fff; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+.sym-main { flex: 1; min-width: 0; }
+.sym-code { font-size: 14px; color: var(--text); }
+.sym-code em { font-style: normal; color: #5b8cff; }
+.sym-desc { font-size: 12px; color: var(--menu-text); display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.sym-tag { font-size: 9px; letter-spacing: .5px; padding: 1px 5px; border-radius: 3px; background: #343434; color: #a2a2a2; }
+.sym-ex { font-size: 12px; color: var(--menu-sec); }
+
+/* 指標視窗 */
+.modal.modal-ind { width: 840px; height: 638px; max-height: 85vh; }
+.ind-head { display: flex; align-items: center; justify-content: space-between; padding: 17px 14px 17px 20px; font-size: 20px; font-weight: 600; line-height: 28px; color: var(--menu-text); flex: none; }
+.ind-search { display: flex; align-items: center; gap: 8px; margin: 0 20px 8px; height: 40px; padding: 0 12px; border: 1px solid #434343; border-radius: 8px; flex: none; }
+.ind-search:focus-within { border-color: var(--blue); }
+.ind-search input { flex: 1; background: none; border: 0; outline: none; font-size: 16px; color: var(--text); }
+.ind-body { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 8px 20px 12px; }
+.ind-side { width: 200px; flex: none; overflow: auto; }
+.ind-sec { font-size: 11px; line-height: 16px; color: var(--menu-sec); padding: 10px 12px 6px; }
+.ind-side-item { display: flex; align-items: center; gap: 8px; width: 200px; height: 40px; padding: 0 8px; border-radius: 8px; font-size: 14px; color: var(--menu-text); }
+.ind-side-item:hover { background: var(--menu-hover); }
+.ind-side-item.active { background: #2b2b2b; font-weight: 600; color: var(--text); }
+.ind-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ind-colhead { font-size: 11px; color: var(--menu-sec); padding: 14px 4px 6px; }
+.ind-list { flex: 1; overflow: auto; }
+.ind-item { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 32px; padding: 0 16px 0 4px; border-radius: 8px; font-size: 14px; color: var(--menu-text); text-align: left; }
+.ind-item:hover { background: var(--menu-hover); color: var(--text); }
+.ind-short { font-size: 12px; color: var(--menu-sec); }
+
+/* 圖例：商品說明 16px（TradingView 實際字級） */
+.lg-title { font-size: 16px; }
+
+/* 重播工具列：和 TradingView 一樣固定在圖表下方 */
+#replayDock { flex: none; }
+.replay-bar {
+  position: static; transform: none; height: 38px; padding: 0 8px; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); border: 0; border-top: 1px solid var(--border); border-radius: 0; box-shadow: none;
+}
+.replay-bar[hidden] { display: none !important; }
+.rpb-group { display: flex; align-items: center; gap: 2px; }
+.rpb { min-width: 32px; height: 32px; border-radius: 6px; color: var(--text); }
+.rpb svg { width: 26px; height: 26px; }
+.rpb:hover { background: var(--hover); }
+.rpb-text { gap: 2px; padding: 0 8px 0 4px; font-size: 14px; color: var(--text); }
+.rpb-play, .rpb-play.on { background: none; color: var(--text); margin: 0; }
+.rpb-play:hover { background: var(--hover); }
+.rpb-fast { color: var(--text); }
+.rpb-speed { min-width: 44px; font-size: 14px; font-weight: 400; padding: 0 8px; }
+.rpb-menu { bottom: 40px; min-width: 110px; }
+.rpb-time { min-width: 0; padding: 0 6px; font-size: 13px; color: var(--menu-text); }
+.rpb-sep { background: var(--border); }
+/* 選擇K線：藍色直線＋剪刀，時間軸上顯示起點時間 */
+.rp-line { width: 1px; margin-left: 0; background: var(--blue); }
+.rp-cut { position: absolute; top: 2px; left: -14px; width: 28px; height: 28px; color: var(--blue); display: flex; align-items: center; justify-content: center; font-style: normal; }
+.rp-time { position: absolute; transform: translateX(-50%); padding: 2px 8px; border-radius: 4px; background: var(--blue); color: #fff; font-size: 12px; white-space: nowrap; }
+.rp-shade { background: rgba(41, 98, 255, 0.12); }
+
+/* 右側詳情（TradingView 格式） */
+#details { padding: 12px 14px; }
+.dt-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.dt-head b { font-weight: 600; color: var(--text); }
+.dt-sub { font-size: 12px; color: var(--text); line-height: 1.8; margin: 6px 0 8px; }
+.dt-sub span { color: var(--menu-sec); }
+.dt-price { font-size: 28px; font-weight: 600; letter-spacing: .3px; }
+.dt-price small { font-size: 12px; font-weight: 500; color: var(--text); margin-left: 4px; }
+.dt-chg { font-size: 15px; font-weight: 500; }
+.dt-open { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--up); }
+.dt-open i { width: 7px; height: 7px; border-radius: 50%; background: var(--up); }
+.dt-vol { margin-top: 18px; font-size: 12px; }
+.dt-vol-row { display: flex; justify-content: space-between; color: var(--menu-sec); }
+.dt-vol-row b { font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.dt-vol-bar { position: relative; height: 4px; margin-top: 6px; border-radius: 2px; background: #22c4d6; overflow: hidden; }
+.dt-vol-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #2962ff; border-right: 2px solid var(--bg); }
+
+.ctx-menu { width: auto; min-width: 362px; max-width: 520px; }
+.lev-row .op-input { min-width: 0; }
+.lev-pop { background: var(--menu-bg); border: 0; border-radius: 8px; color: var(--menu-text); }

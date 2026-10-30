@@ -1,19 +1,19 @@
 // 行情來源：Binance 公開 API（REST + WebSocket），連不上時自動切換成本機模擬行情。
 
 export const INTERVALS = [
-  { id: '1m', label: '1分', legend: '1', sec: 60, group: '分鐘' },
-  { id: '3m', label: '3分', legend: '3', sec: 180, group: '分鐘' },
-  { id: '5m', label: '5分', legend: '5', sec: 300, group: '分鐘' },
-  { id: '15m', label: '15分', legend: '15', sec: 900, group: '分鐘' },
-  { id: '30m', label: '30分', legend: '30', sec: 1800, group: '分鐘' },
-  { id: '1h', label: '1小時', legend: '60', sec: 3600, group: '小時' },
-  { id: '2h', label: '2小時', legend: '120', sec: 7200, group: '小時' },
-  { id: '4h', label: '4小時', legend: '240', sec: 14400, group: '小時' },
-  { id: '6h', label: '6小時', legend: '360', sec: 21600, group: '小時' },
-  { id: '12h', label: '12小時', legend: '720', sec: 43200, group: '小時' },
-  { id: '1d', label: '天', legend: '1D', sec: 86400, group: '天' },
-  { id: '3d', label: '3天', legend: '3D', sec: 259200, group: '天' },
-  { id: '1w', label: '週', legend: '1W', sec: 604800, group: '天' },
+  { id: '1m', label: '1分', menu: '1 分鐘', legend: '1', sec: 60, group: '分' },
+  { id: '3m', label: '3分', menu: '3 分鐘', legend: '3', sec: 180, group: '分' },
+  { id: '5m', label: '5分', menu: '5 分鐘', legend: '5', sec: 300, group: '分' },
+  { id: '15m', label: '15分', menu: '15 分鐘', legend: '15', sec: 900, group: '分' },
+  { id: '30m', label: '30分', menu: '30 分鐘', legend: '30', sec: 1800, group: '分' },
+  { id: '1h', label: '1小時', menu: '1 小時', legend: '60', sec: 3600, group: '小時' },
+  { id: '2h', label: '2小時', menu: '2 小時', legend: '120', sec: 7200, group: '小時' },
+  { id: '4h', label: '4小時', menu: '4 小時', legend: '240', sec: 14400, group: '小時' },
+  { id: '6h', label: '6小時', menu: '6 小時', legend: '360', sec: 21600, group: '小時' },
+  { id: '12h', label: '12小時', menu: '12 小時', legend: '720', sec: 43200, group: '小時' },
+  { id: '1d', label: '天', menu: '1 天', legend: '1D', sec: 86400, group: '天' },
+  { id: '3d', label: '3天', menu: '3 天', legend: '3D', sec: 259200, group: '天' },
+  { id: '1w', label: '週', menu: '1 週', legend: '1W', sec: 604800, group: '天' },
 ];
 export const FAVORITE_INTERVALS = ['5m', '15m', '30m', '1h', '4h', '1d'];
 export const intervalSec = id => INTERVALS.find(i => i.id === id).sec;
@@ -36,14 +36,15 @@ export const SYMBOLS = {
   TRXUSDT: { name: 'TRON', base: 'TRX', color: '#eb0029', icon: 'T', precision: 5, start: 0.25 },
   DOTUSDT: { name: 'Polkadot', base: 'DOT', color: '#e6007a', icon: 'D', precision: 3, start: 4.5 },
 };
-for (const m of Object.values(SYMBOLS)) m.desc = `${m.name}/USD Tether Perpetual Contract`;
+// TradingView 上 Binance 永續合約的說明格式
+for (const m of Object.values(SYMBOLS)) m.desc = `${m.name} / TetherUS PERPETUAL CONTRACT`;
 export const EXCHANGE = 'Binance';
 export const displaySymbol = s => `${s}.P`;
 
 export function symbolMeta(symbol) {
   if (SYMBOLS[symbol]) return SYMBOLS[symbol];
   const base = symbol.replace(/(USDT|USDC|BUSD|BTC|ETH)$/, '') || symbol;
-  return { desc: `${base}/USD Tether Perpetual Contract`, base, color: '#787b86', icon: base[0] || '?', precision: 4, start: 1 };
+  return { desc: `${base} / TetherUS PERPETUAL CONTRACT`, base, color: '#787b86', icon: base[0] || '?', precision: 4, start: 1 };
 }
 
 const REST = 'https://fapi.binance.com/fapi/v1';
