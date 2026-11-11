@@ -48,7 +48,10 @@ export function symbolMeta(symbol) {
 }
 
 const REST = 'https://fapi.binance.com/fapi/v1';
-const WSS = 'wss://fstream.binance.com/stream?streams=';
+// Binance 把合約 WebSocket 拆成兩個入口：盤口類（bookTicker、depth）走 /public，其他行情（K 線、成交、ticker）走 /market。
+// 舊的 /stream 入口現在只剩盤口有資料，K 線完全收不到，所以要分開連。
+const WS_BASE = 'wss://fstream.binance.com';
+const wssFor = streams => `${WS_BASE}/${streams.every(s => /@(bookTicker|depth)/.test(s)) ? 'public' : 'market'}/stream?streams=`;
 
 async function fetchJSON(url, ms = 8000) {
   const ctrl = new AbortController();
@@ -66,7 +69,7 @@ async function fetchJSON(url, ms = 8000) {
 function openStream(streams, onData) {
   let ws, closed = false, retry = 0;
   const connect = () => {
-    ws = new WebSocket(WSS + streams.join('/'));
+    ws = new WebSocket(wssFor(streams) + streams.join('/'));
     ws.onmessage = e => {
       retry = 0;
       const msg = JSON.parse(e.data);
@@ -149,7 +152,25 @@ export class Datafeed {
 
   subscribeKline(symbol, interval, cb) {
     if (!this.live) return this.sim.on('kline', { symbol, interval, cb });
-    return openStream([`${symbol.toLowerCase()}@kline_${interval}`], d => cb(klineToBar(d.k)));
+    // K 線推播大約一秒一次；中間再用逐筆成交（aggTrade）即時更新最後一根，畫面才會像 TradingView 一樣一直跳
+    const s = symbol.toLowerCase(), step = intervalSec(interval);
+    let cur = null, lastEmit = 0, pending = false, stopped = false;
+    const emit = () => { pending = false; lastEmit = performance.now(); if (!stopped) cb({ ...cur }); };
+    const close = openStream([`${s}@kline_${interval}`, `${s}@aggTrade`], (d, stream) => {
+      if (stream.endsWith('@aggTrade')) {
+        if (!cur) return;
+        const t = Math.floor(d.T / 1000) + TZ_OFFSET;
+        if (t < cur.time || t >= cur.time + step) return;   // 下一根的成交等 K 線推播開新棒
+        const p = +d.p;
+        cur.close = p; cur.high = Math.max(cur.high, p); cur.low = Math.min(cur.low, p); cur.volume += +d.q;
+        // 最多每 100ms 畫一次，避免成交太密時拖慢畫面
+        if (!pending) { pending = true; setTimeout(emit, Math.max(0, 100 - (performance.now() - lastEmit))); }
+        return;
+      }
+      cur = klineToBar(d.k);
+      emit();
+    });
+    return () => { stopped = true; close(); };
   }
 
   subscribeBook(symbol, cb) {
