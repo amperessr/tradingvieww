@@ -87,7 +87,7 @@ export class TradeLines {
     it.el.style.cursor = d.onCommit ? 'ns-resize' : 'default';
     // 和 TradingView 一樣：［數量］［盈虧］［✕］；持倉線左邊多一個「%」切換盈虧顯示方式
     it.el.innerHTML =
-      (d.onPct ? `<span class="tl-pct ${d.pctOn ? 'on' : ''}" data-role="pct" title="切換盈虧顯示：USD／收益率">%</span>` : '') +
+      (d.onPct ? `<span class="tl-pct ${d.pctOn ? 'on' : ''}" data-role="pct" title="切換盈虧顯示：USD／收益率"><svg viewBox="0 0 14 14" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.2" d="M4.5 11.5v-9M2.5 4.5l2-2 2 2M9.5 2.5v9M7.5 9.5l2 2 2-2"/></svg></span>` : '') +
       (d.addTP ? '<span class="tl-add tp" data-role="add-tp" title="拖曳以設定止盈">止盈</span>' : '') +
       (d.addSL ? '<span class="tl-add sl" data-role="add-sl" title="拖曳以設定止損">止損</span>' : '') +
       (d.qty != null ? `<span class="tl-qty ${d.qtyFill ? 'fill' : ''}">${d.qty}</span>` : '') +

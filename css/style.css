@@ -697,3 +697,13 @@ body.recording .ps-plus { display: none !important; }
 .tl .tl-pct:hover, .tl .tl-pct.on { background: var(--c); color: #fff; }
 .lev-sub { font-size: 11px; color: var(--menu-sec); margin-top: 2px; }
 .lev-row input[type=checkbox] { accent-color: var(--blue); width: 14px; height: 14px; margin: 0; flex: none; }
+
+/* TradingView：止盈／止損標籤的數量、盈虧、✕ 都用線的顏色；持倉標籤的盈虧用紅綠表示正負 */
+.tl { border-radius: 4px; }
+.tl .tl-qty { border-radius: 3px 0 0 3px; }
+.tl .tl-text { color: var(--c); }
+.tl .tl-text.pos { color: var(--up); }
+.tl .tl-text.neg { color: var(--down); }
+.tl .tl-x { color: var(--c); border-left-color: var(--c); border-radius: 0 3px 3px 0; }
+.tl .tl-x:hover { background: var(--c); color: #fff; }
+.tl .tl-pct { border-radius: 4px; padding: 0 3px; }
