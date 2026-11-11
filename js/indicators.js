@@ -1,5 +1,6 @@
 // 技術指標：計算 + 在圖表上建立對應的 series
 import { LineSeries, HistogramSeries, LineStyle } from '../lib/lightweight-charts.standalone.production.mjs';
+import { detect3p1, detectSpur, SignalLayer } from './smc.js';
 
 function sma(values, n) {
   const out = new Array(values.length).fill(null);
@@ -62,6 +63,19 @@ function rsi(values, n) {
 
 // 每種指標：名稱、預設參數、要畫哪幾條線、怎麼計算
 export const INDICATORS = {
+  // 幣聖課（ACDC_College）的邀請制指標：畫在主圖上的訊號圖層，不是線
+  TP1: {
+    name: '3+1指標 Lv1', short: 'ACDC_College', author: 'ACDC_College', inviteOnly: true, overlay: true, layer: '3p1',
+    params: { k: 2, maxGap: 60 }, lines: [],
+    detect: (bars, p) => detect3p1(bars, p),
+    title: () => '3+1指標 Lv1',
+  },
+  SPUR: {
+    name: '馬刺策略_BSC2026', short: 'ACDC_College', author: 'ACDC_College', inviteOnly: true, overlay: true, layer: 'spur',
+    params: {}, lines: [],
+    detect: (bars, p) => detectSpur(bars, p),
+    title: () => '馬刺策略_BSC2026',
+  },
   MA: {
     name: '移動平均線', short: 'MA', overlay: true, params: { length: 9 },
     lines: [{ key: 'ma', color: '#2962ff', width: 1 }],
@@ -125,17 +139,32 @@ export const INDICATORS = {
 let nextId = 1;
 
 export class IndicatorManager {
-  constructor(chart, getBars, getPrecision, onChange) {
+  constructor(chart, getBars, getPrecision, onChange, getMainSeries) {
     this.chart = chart;
     this.getBars = getBars;
     this.getPrecision = getPrecision;
     this.onChange = onChange;
+    this.getMainSeries = getMainSeries;
     this.list = [];
+  }
+
+  // 換 K 線類型時主 series 會換掉，訊號圖層要跟著搬過去
+  reattach(oldSeries, newSeries) {
+    for (const ind of this.list) if (ind.layer) { oldSeries.detachPrimitive(ind.layer); newSeries.attachPrimitive(ind.layer); }
   }
 
   add(type, params = {}) {
     const def = INDICATORS[type];
     const ind = { id: nextId++, type, def, params: { ...def.params, ...params }, series: {}, visible: true, values: {} };
+    if (def.layer) {
+      ind.layer = new SignalLayer(this.chart, def.layer);
+      ind.layer.bars = this.getBars;
+      this.getMainSeries().attachPrimitive(ind.layer);
+      this.list.push(ind);
+      this.recalc(ind);
+      this.onChange();
+      return ind;
+    }
     let paneIndex = 0;
     if (!def.overlay) paneIndex = this.chart.panes().length;
     for (const line of def.lines) {
@@ -164,6 +193,7 @@ export class IndicatorManager {
     const i = this.list.findIndex(x => x.id === id);
     if (i < 0) return;
     const [ind] = this.list.splice(i, 1);
+    if (ind.layer) this.getMainSeries().detachPrimitive(ind.layer);
     Object.values(ind.series).forEach(s => this.chart.removeSeries(s));
     this.onChange();
   }
@@ -171,12 +201,19 @@ export class IndicatorManager {
   toggle(id) {
     const ind = this.list.find(x => x.id === id);
     ind.visible = !ind.visible;
+    ind.layer?.setVisible(ind.visible);
     Object.values(ind.series).forEach(s => s.applyOptions({ visible: ind.visible }));
     this.onChange();
   }
 
   recalc(ind) {
     const bars = this.getBars();
+    if (ind.layer) {
+      ind.signals = ind.def.detect(bars, ind.params);
+      ind.layer.set(ind.signals);
+      ind.lastCalc = performance.now();
+      return;
+    }
     const vals = ind.def.calc(bars, ind.params);
     ind.values = vals;
     for (const line of ind.def.lines) {
@@ -200,6 +237,8 @@ export class IndicatorManager {
     const bars = this.getBars();
     const n = bars.length - 1;
     for (const ind of this.list) {
+      // 訊號圖層：掃描比較花時間，盤中最多每 0.25 秒重算一次
+      if (ind.layer) { if (performance.now() - (ind.lastCalc || 0) > 250) this.recalc(ind); continue; }
       const vals = ind.def.calc(bars, ind.params);
       ind.values = vals;
       for (const line of ind.def.lines) {
@@ -217,6 +256,7 @@ export class IndicatorManager {
 
   // 圖例用：取得某根 K 棒的指標數值
   valuesAt(ind, index) {
+    if (ind.layer) return [];
     return ind.def.lines.map(l => ({ color: l.color ?? '#26a69a', v: ind.values[l.key]?.[index] }));
   }
 }

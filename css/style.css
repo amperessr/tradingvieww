@@ -707,3 +707,9 @@ body.recording .ps-plus { display: none !important; }
 .tl .tl-x { color: var(--c); border-left-color: var(--c); border-radius: 0 3px 3px 0; }
 .tl .tl-x:hover { background: var(--c); color: #fff; }
 .tl .tl-pct { border-radius: 4px; padding: 0 3px; }
+
+/* 指標視窗：邀請制腳本（星號、綠色鎖頭、作者名藍字，同 TradingView） */
+.ind-item .ind-name { display: flex; align-items: center; gap: 6px; }
+.ind-item .ind-star { color: var(--text); font-size: 13px; }
+.ind-item .ind-lock { color: #22ab94; }
+.ind-item .ind-author { font-size: 14px; color: #5b8cff; }

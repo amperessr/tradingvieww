@@ -215,6 +215,7 @@ function setChartType(type) {
   const old = mainSeries;
   old.detachPrimitive(axisExtras);
   mainSeries = createMainSeries();
+  indicators.reattach(old, mainSeries);
   mainSeries.setData(seriesData());
   drawings.setSeries(mainSeries);
   tradeLines.setSeries(mainSeries);
@@ -252,7 +253,7 @@ const realBroker = new Broker();
 const replayBroker = new Broker({ storeKey: null });
 let broker = realBroker;
 for (const b of [realBroker, replayBroker]) b.formatPrice = (sym, p) => fmt(p, sym === state.symbol ? state.precision : symbolMeta(sym).precision);
-const indicators = new IndicatorManager(chart, () => state.bars, () => state.precision, () => { renderLegend(); renderTree(); savePrefs(); });
+const indicators = new IndicatorManager(chart, () => state.bars, () => state.precision, () => { renderLegend(); renderTree(); savePrefs(); }, () => mainSeries);
 const drawings = new Drawings({
   chart, series: mainSeries, wrap,
   getBars: () => state.bars, getStep: () => intervalSec(state.interval), getPrecision: () => state.precision,
@@ -288,6 +289,7 @@ const toolbar = buildLeftToolbar({
 function setIndicatorsHidden(h) {
   state.indicatorsHidden = h;
   indicators.list.forEach(i => Object.values(i.series).forEach(s => s.applyOptions({ visible: !h && i.visible })));
+  indicators.list.forEach(i => i.layer?.setVisible(!h && i.visible));
   volumeSeries.applyOptions({ visible: !h && state.volumeVisible });
   renderLegend();
 }
@@ -1364,7 +1366,8 @@ document.addEventListener('keydown', e => {
 });
 
 function openIndicators() {
-  const items = [{ type: 'VOL', name: '成交量', short: 'Volume' }, ...Object.entries(INDICATORS).map(([type, d]) => ({ type, name: d.name, short: d.short }))];
+  const items = [{ type: 'VOL', name: '成交量', short: 'Volume' }, ...Object.entries(INDICATORS).map(([type, d]) => ({ type, name: d.name, short: d.short, invite: d.inviteOnly }))];
+  const LOCK = '<svg class="ind-lock" viewBox="0 0 18 18" width="16" height="16"><path fill="none" stroke="currentColor" d="M5.5 8.5h7v6h-7zM7 8.5V6.5a2 2 0 0 1 4 0v2"/></svg>';
   const side = [
     ['個人的', [['user', '我的腳本'], ['bag', '已購買']]],
     ['內建', [['chart', '技術分析'], ['bars', '基本面']]],
@@ -1393,10 +1396,14 @@ function openIndicators() {
     $('#modal').classList.add('modal-ind');
     let tab = '技術分析', chip = '指標';
     const render = () => {
-      if (tab !== '技術分析' || chip !== '指標') { $('#indList').innerHTML = '<div class="pt-empty">示範版只提供內建的技術指標</div>'; return; }
       const v = $('#indQ').value.trim().toLowerCase();
-      $('#indList').innerHTML = items.filter(i => !v || i.name.includes(v) || i.short.toLowerCase().includes(v))
-        .map(i => `<button class="ind-item" data-type="${i.type}"><span>${i.name}</span><span class="ind-short">${i.short}</span></button>`).join('');
+      const purchased = tab === '已購買' || tab === '我的腳本';
+      if ((!purchased && tab !== '技術分析') || chip !== '指標') { $('#indList').innerHTML = '<div class="pt-empty">示範版只提供內建的技術指標</div>'; return; }
+      const list = items.filter(i => (purchased ? i.invite : true) && (!v || i.name.toLowerCase().includes(v) || i.short.toLowerCase().includes(v)));
+      $('#indList').innerHTML = list.map(i => i.invite
+        ? `<button class="ind-item" data-type="${i.type}"><span class="ind-name"><span class="ind-star">★</span>${i.name}${LOCK}</span><span class="ind-author">${i.short}</span></button>`
+        : `<button class="ind-item" data-type="${i.type}"><span>${i.name}</span><span class="ind-short">${i.short}</span></button>`).join('')
+        || '<div class="pt-empty">找不到符合的指標</div>';
     };
     $('#indQ').oninput = render;
     $('#modal .ind-side').onclick = e => {
@@ -1419,7 +1426,7 @@ function openIndicators() {
         volumeSeries.applyOptions({ visible: true });
         renderLegend(); renderTree(); savePrefs();
       } else indicators.add(it.dataset.type);
-      toast('已新增指標', it.querySelector('span').textContent, 'ok');
+      toast('已新增指標', it.querySelector('span').textContent.replace('★', ''), 'ok');
     };
     render();
     $('#indQ').focus();
@@ -1744,4 +1751,4 @@ renderLegend();
 positionScaleWidgets();
 startTickers();
 // 除錯用（瀏覽器主控台可以操作）
-window.__tv = { chart, replay, state, drawings, recorder, get broker() { return broker; } };
+window.__tv = { chart, replay, state, drawings, recorder, indicators, get broker() { return broker; } };
