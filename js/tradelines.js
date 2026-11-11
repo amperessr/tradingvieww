@@ -69,6 +69,7 @@ export class TradeLines {
       e.preventDefault();
       const role = e.target.closest('[data-role]')?.dataset.role;
       if (role === 'close') { it.d.onClose?.(); return; }
+      if (role === 'pct') { it.d.onPct?.(); return; }
       if (role === 'add-tp' || role === 'add-sl') { this._startGhost(it, role === 'add-tp' ? 'tp' : 'sl', e); return; }
       if (it.d.onCommit) this._startDrag(it, e);
     });
@@ -78,17 +79,19 @@ export class TradeLines {
   _renderEl(it) {
     const { d } = it;
     const { text, cls } = d.text(it.price);
-    const sig = `${d.color}|${text}|${cls}|${d.qty}|${!!d.onClose}|${!!d.addTP}|${!!d.addSL}|${d.preview}`;
+    const sig = `${d.color}|${text}|${cls}|${d.qty}|${!!d.onClose}|${!!d.addTP}|${!!d.addSL}|${d.preview}|${!!d.qtyFill}|${!!d.onPct}|${d.pctOn}`;
     if (it.sig === sig) return;
     it.sig = sig;
     it.el.style.setProperty('--c', d.color);
     it.el.classList.toggle('preview', !!d.preview);
     it.el.style.cursor = d.onCommit ? 'ns-resize' : 'default';
+    // 和 TradingView 一樣：［數量］［盈虧］［✕］；持倉線左邊多一個「%」切換盈虧顯示方式
     it.el.innerHTML =
+      (d.onPct ? `<span class="tl-pct ${d.pctOn ? 'on' : ''}" data-role="pct" title="切換盈虧顯示：USD／收益率">%</span>` : '') +
       (d.addTP ? '<span class="tl-add tp" data-role="add-tp" title="拖曳以設定止盈">止盈</span>' : '') +
       (d.addSL ? '<span class="tl-add sl" data-role="add-sl" title="拖曳以設定止損">止損</span>' : '') +
+      (d.qty != null ? `<span class="tl-qty ${d.qtyFill ? 'fill' : ''}">${d.qty}</span>` : '') +
       `<span class="tl-text ${cls || ''}">${text}</span>` +
-      (d.qty != null ? `<span class="tl-qty">${d.qty}</span>` : '') +
       (d.onClose ? `<span class="tl-x" data-role="close" title="${d.closeTitle || '取消'}">✕</span>` : '');
   }
 
@@ -102,7 +105,7 @@ export class TradeLines {
   _startGhost(parent, kind, e) {
     const spec = kind === 'tp' ? parent.d.addTP : parent.d.addSL;
     const d = {
-      key: `${parent.d.key}:new-${kind}`, price: parent.price, color: kind === 'tp' ? '#089981' : '#f23645',
+      key: `${parent.d.key}:new-${kind}`, price: parent.price, color: kind === 'tp' ? '#089981' : '#ff9800',
       dashed: true, qty: parent.d.qty, text: spec.text, onCommit: spec.onCommit,
     };
     const it = { d, price: parent.price, el: this._makeEl(), line: this.series.createPriceLine(this._lineOpts(d, parent.price)), ghost: true };
@@ -146,7 +149,7 @@ export class TradeLines {
       if (y == null || y < 0 || y > paneH) { it.el.style.display = 'none'; continue; }
       it.el.style.display = '';
       const w = it.el.offsetWidth, h = 22, top = Math.round(y - 11);
-      let x = Math.max(4, paneW - 70 - w);
+      let x = Math.max(4, paneW - 40 - w);   // 和 TradingView 一樣靠近右側價格軸
       for (let moved = true, n = 0; moved && n < 30; n++) {
         moved = false;
         for (const p of placed) {

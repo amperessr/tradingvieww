@@ -680,3 +680,20 @@ body.recording .ps-plus { display: none !important; }
 .ctx-menu { width: auto; min-width: 362px; max-width: 520px; }
 .lev-row .op-input { min-width: 0; }
 .lev-pop { background: var(--menu-bg); border: 0; border-radius: 8px; color: var(--menu-text); }
+
+/* ===== 交易線標籤：TradingView 格式 ［數量］［盈虧］［✕］ ===== */
+.tl { border-radius: 2px; font-size: 12px; box-shadow: none; overflow: visible; }
+.tl > * { padding: 0 6px; }
+.tl .tl-qty { order: 0; background: transparent; color: var(--c); font-weight: 400; border-right: 1px solid var(--c); }
+.tl .tl-qty.fill { background: var(--c); color: #fff; }
+.tl .tl-text { color: var(--text); }
+.tl .tl-x { color: var(--text-2); }
+.tl .tl-add.sl { background: #ff9800; }
+.tl .tl-pct {
+  position: absolute; right: calc(100% + 6px); top: -1px; height: 22px; min-width: 22px; padding: 0 5px;
+  display: flex; align-items: center; justify-content: center; border: 1px solid var(--c); border-radius: 2px;
+  background: var(--bg); color: var(--c); cursor: pointer; font-size: 12px;
+}
+.tl .tl-pct:hover, .tl .tl-pct.on { background: var(--c); color: #fff; }
+.lev-sub { font-size: 11px; color: var(--menu-sec); margin-top: 2px; }
+.lev-row input[type=checkbox] { accent-color: var(--blue); width: 14px; height: 14px; margin: 0; flex: none; }

@@ -11,7 +11,7 @@ import { buildLeftToolbar, ICONS } from './lefttoolbar.js';
 import { Replay } from './replay.js';
 import { Recorder } from './recorder.js';
 
-const UP = '#089981', DOWN = '#f23645', BLUE = '#2962ff', GREEN = '#089981', RED = '#f23645';
+const UP = '#089981', DOWN = '#f23645', BLUE = '#2962ff', GREEN = '#089981', RED = '#f23645', ORANGE = '#ff9800';
 const VOL_UP = 'rgba(38, 166, 154, 0.5)', VOL_DOWN = 'rgba(239, 83, 80, 0.5)';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -39,7 +39,11 @@ const state = {
   bottomOpen: !!prefs.bottomOpen,
   indicatorsHidden: false,
   watermark: prefs.watermark !== false,
-  trade: { margin: prefs.tradeMargin ?? 100, leverage: prefs.tradeLeverage ?? 10 },   // 開倉的本金（USDT）與槓桿
+  trade: {   // 開倉的本金（USDT）、槓桿，以及開倉時自動帶的止盈止損（距離進場價的 %）
+    margin: prefs.tradeMargin ?? 100, leverage: prefs.tradeLeverage ?? 10,
+    autoTP: prefs.autoTP ?? true, tpPct: prefs.tpPct ?? 1, autoSL: prefs.autoSL ?? true, slPct: prefs.slPct ?? 1,
+  },
+  pnlMode: prefs.pnlMode || 'usd',   // 交易線上的盈虧顯示：usd / pct
 };
 const ticket = { side: 'buy', type: 'market', price: null, tpOn: false, slOn: false, tp: null, sl: null };
 let toolbarState = prefs.toolbar || {};
@@ -56,6 +60,7 @@ function savePrefs() {
       indicators: indicators.list.map(i => ({ type: i.type, params: i.params })), volume: state.volumeVisible,
       rightView: state.rightView, bottomOpen: state.bottomOpen, toolbar: toolbarState, watermark: state.watermark,
       recArea: recPrefs.area, tradeMargin: state.trade.margin, tradeLeverage: state.trade.leverage,
+      autoTP: state.trade.autoTP, tpPct: state.trade.tpPct, autoSL: state.trade.autoSL, slPct: state.trade.slPct, pnlMode: state.pnlMode,
     }));
   } catch { /* 忽略 */ }
 }
@@ -78,6 +83,15 @@ function fmtVol(v) {
 const roundQty = q => +q.toPrecision(4);
 const cleanMargin = v => (v > 0 ? +(+v).toFixed(2) : null);
 const cleanLeverage = v => (v >= 1 ? +(+v).toFixed(2) : null);
+const cleanPct = v => (v > 0 ? +(+v).toFixed(2) : null);
+// 依設定算出開倉要帶的止盈止損價格（以進場價為準）
+function autoBracket(side, entry) {
+  const dir = side === 'buy' ? 1 : -1, t = state.trade;
+  return {
+    tp: t.autoTP ? roundP(entry * (1 + (dir * t.tpPct) / 100)) : null,
+    sl: t.autoSL ? roundP(entry * (1 - (dir * t.slPct) / 100)) : null,
+  };
+}
 // 依目前的本金與槓桿，換算在這個價格要開多少數量
 const qtyFor = price => (price ? roundQty((state.trade.margin * state.trade.leverage) / price) : 0);
 const fmtPct = v => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}%`;
@@ -491,7 +505,8 @@ const bidAsk = () => {
 // ================= 下單 =================
 function marketOrder(side) {
   const { bid, ask } = bidAsk();
-  broker.placeOrder({ symbol: state.symbol, side, type: 'market', qty: qtyFor(side === 'buy' ? ask : bid), leverage: state.trade.leverage });
+  const px = side === 'buy' ? ask : bid;
+  broker.placeOrder({ symbol: state.symbol, side, type: 'market', qty: qtyFor(px), leverage: state.trade.leverage, ...autoBracket(side, px) });
 }
 $('#qtBuy').addEventListener('click', () => marketOrder('buy'));
 $('#qtSell').addEventListener('click', () => marketOrder('sell'));
@@ -512,15 +527,24 @@ function renderLev() {
     <div class="lev-title">本金與槓桿</div>
     <label class="lev-row"><span>本金</span><span class="op-input"><input data-tf="margin" value="${margin}"><span class="op-unit">USDT</span></span></label>
     <label class="lev-row"><span>槓桿</span><span class="op-input"><input data-tf="leverage" value="${leverage}"><span class="op-unit">倍</span></span></label>
+    <div class="lev-sub">開倉時自動帶止盈止損</div>
+    <label class="lev-row"><input type="checkbox" data-tf="autoTP" ${state.trade.autoTP ? 'checked' : ''}><span>止盈</span><span class="op-input"><input data-tf="tpPct" value="${state.trade.tpPct}"><span class="op-unit">%</span></span></label>
+    <label class="lev-row"><input type="checkbox" data-tf="autoSL" ${state.trade.autoSL ? 'checked' : ''}><span>止損</span><span class="op-input"><input data-tf="slPct" value="${state.trade.slPct}"><span class="op-unit">%</span></span></label>
     <div class="lev-info">
       <div><span>倉位價值</span><b>${money(margin * leverage)} USDT</b></div>
       <div><span>數量（約）</span><b>${q} ${symbolMeta(state.symbol).base}</b></div>
       <div><span>強平價（多 / 空）</span><b>${leverage > 1 ? `${fmt(last * (1 - 1 / leverage))} / ${fmt(last * (1 + 1 / leverage))}` : '不會強平'}</b></div>
+      <div><span>做多：止盈 / 止損</span><b>${state.trade.autoTP ? fmt(last * (1 + state.trade.tpPct / 100)) : '—'} / ${state.trade.autoSL ? fmt(last * (1 - state.trade.slPct / 100)) : '—'}</b></div>
+      <div><span>做空：止盈 / 止損</span><b>${state.trade.autoTP ? fmt(last * (1 - state.trade.tpPct / 100)) : '—'} / ${state.trade.autoSL ? fmt(last * (1 + state.trade.slPct / 100)) : '—'}</b></div>
     </div>`;
 }
 function setTrade(patch) {
   if ('margin' in patch) state.trade.margin = cleanMargin(patch.margin) ?? state.trade.margin;
   if ('leverage' in patch) state.trade.leverage = cleanLeverage(patch.leverage) ?? state.trade.leverage;
+  if ('tpPct' in patch) state.trade.tpPct = cleanPct(patch.tpPct) ?? state.trade.tpPct;
+  if ('slPct' in patch) state.trade.slPct = cleanPct(patch.slPct) ?? state.trade.slPct;
+  if ('autoTP' in patch) state.trade.autoTP = !!patch.autoTP;
+  if ('autoSL' in patch) state.trade.autoSL = !!patch.autoSL;
   renderLev(); renderTicket(); syncTradeLines(); savePrefs();
 }
 $('#qtLev').addEventListener('click', e => {
@@ -532,7 +556,11 @@ $('#qtLev').addEventListener('click', e => {
   renderLev();
 });
 levPop.addEventListener('pointerdown', e => e.stopPropagation());
-levPop.addEventListener('change', e => { const f = e.target.dataset.tf; if (f) setTrade({ [f]: parseFloat(e.target.value) }); });
+levPop.addEventListener('change', e => {
+  const f = e.target.dataset.tf;
+  if (!f) return;
+  setTrade({ [f]: e.target.type === 'checkbox' ? e.target.checked : parseFloat(e.target.value) });
+});
 levPop.addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
 document.addEventListener('pointerdown', e => { if (!levPop.hidden && !e.target.closest('.lev-pop, #qtLev')) levPop.hidden = true; });
 
@@ -651,7 +679,10 @@ function syncTradeLines() {
   const descs = [];
   const pos = broker.positions[sym];
   const last = broker.price(sym);
-  const pnlText = (label, pnl, margin) => ({ text: `${label} ${fmtUsdt(pnl)}${margin ? ` (${fmtPct((pnl / margin) * 100)})` : ''}`, cls: pnl >= 0 ? 'pos' : 'neg' });
+  const pnlStr = (pnl, margin) => (state.pnlMode === 'pct' && margin ? fmtPct((pnl / margin) * 100) : `${fmtUsd(pnl)} USD`);
+  // 止盈／止損線的盈虧用一般字色，持倉線才用紅綠（和 TradingView 一樣）
+  const pnlText = (label, pnl, margin) => ({ text: pnlStr(pnl, margin), cls: '' });
+  const togglePct = () => { state.pnlMode = state.pnlMode === 'pct' ? 'usd' : 'pct'; syncTradeLines(); savePrefs(); };
 
   if (pos) {
     const dir = pos.side === 'buy' ? 1 : -1;
@@ -659,14 +690,14 @@ function syncTradeLines() {
     const upnl = broker.unrealized(sym);
     descs.push({
       key: 'pos', price: pos.avg, color: dir > 0 ? BLUE : RED,
-      text: () => ({ text: `${fmtUsdt(upnl)} (${fmtPct(broker.roe(sym))})`, cls: upnl >= 0 ? 'pos' : 'neg' }),
-      qty: `${Math.round(pos.leverage ?? 1)}x ${dir > 0 ? '' : '−'}${pos.qty}`, onClose: () => broker.closePosition(sym), closeTitle: '平倉',
+      text: () => ({ text: pnlStr(upnl, posMargin(pos)), cls: upnl >= 0 ? 'pos' : 'neg' }),
+      qty: `${dir > 0 ? '' : '−'}${pos.qty}`, qtyFill: true, onPct: togglePct, pctOn: state.pnlMode === 'pct', onClose: () => broker.closePosition(sym), closeTitle: '平倉',
       addTP: pos.tp == null ? { text: p => est(p, '止盈'), onCommit: p => broker.modifyPosition(sym, { tp: p }) } : null,
       addSL: pos.sl == null ? { text: p => est(p, '止損'), onCommit: p => broker.modifyPosition(sym, { sl: p }) } : null,
     });
     if (pos.tp != null) descs.push({ key: 'pos-tp', price: pos.tp, color: GREEN, text: p => est(p, '止盈'), qty: pos.qty,
       onClose: () => broker.modifyPosition(sym, { tp: null }), closeTitle: '移除止盈', onCommit: p => broker.modifyPosition(sym, { tp: p }) });
-    if (pos.sl != null) descs.push({ key: 'pos-sl', price: pos.sl, color: RED, text: p => est(p, '止損'), qty: pos.qty,
+    if (pos.sl != null) descs.push({ key: 'pos-sl', price: pos.sl, color: ORANGE, text: p => est(p, '止損'), qty: pos.qty,
       onClose: () => broker.modifyPosition(sym, { sl: null }), closeTitle: '移除止損', onCommit: p => broker.modifyPosition(sym, { sl: p }) });
   }
 
@@ -675,14 +706,14 @@ function syncTradeLines() {
     const est = (p, kind) => pnlText(kind, (p - o.price) * o.qty * dir, (o.qty * o.price) / (o.leverage || 1));
     descs.push({
       key: `ord-${o.id}`, price: o.price, color: dir > 0 ? BLUE : RED, dashed: true,
-      text: () => ({ text: `${sideText(o.side)} ${typeText(o.type)}` }), qty: o.qty,
+      text: () => ({ text: `${sideText(o.side)} ${typeText(o.type)}` }), qty: o.qty, qtyFill: true,
       onClose: () => broker.cancelOrder(o.id), closeTitle: '取消訂單', onCommit: p => broker.modifyOrder(o.id, { price: p }),
       addTP: o.tp == null ? { text: p => est(p, '止盈'), onCommit: p => broker.modifyOrder(o.id, { tp: p }) } : null,
       addSL: o.sl == null ? { text: p => est(p, '止損'), onCommit: p => broker.modifyOrder(o.id, { sl: p }) } : null,
     });
     if (o.tp != null) descs.push({ key: `ord-${o.id}-tp`, price: o.tp, color: GREEN, dashed: true, text: p => est(p, '止盈'), qty: o.qty,
       onClose: () => broker.modifyOrder(o.id, { tp: null }), onCommit: p => broker.modifyOrder(o.id, { tp: p }) });
-    if (o.sl != null) descs.push({ key: `ord-${o.id}-sl`, price: o.sl, color: RED, dashed: true, text: p => est(p, '止損'), qty: o.qty,
+    if (o.sl != null) descs.push({ key: `ord-${o.id}-sl`, price: o.sl, color: ORANGE, dashed: true, text: p => est(p, '止損'), qty: o.qty,
       onClose: () => broker.modifyOrder(o.id, { sl: null }), onCommit: p => broker.modifyOrder(o.id, { sl: p }) });
   }
 
@@ -702,7 +733,7 @@ function syncTradeLines() {
       onCommit: p => { ticket.tp = p; renderTicket(); syncTradeLines(); },
     });
     if (ticket.slOn && ticket.sl != null) descs.push({
-      key: 'pv-sl', price: ticket.sl, color: RED, preview: true, text: p => est(p, '止損'), qty: qtyFor(ticketRef()),
+      key: 'pv-sl', price: ticket.sl, color: ORANGE, preview: true, text: p => est(p, '止損'), qty: qtyFor(ticketRef()),
       onDrag: p => { ticket.sl = p; setInput('#opSl', p); updateTicketDynamic(); },
       onCommit: p => { ticket.sl = p; renderTicket(); syncTradeLines(); },
     });
@@ -824,8 +855,8 @@ function openOrderMenu(x, y, price, { compact = false } = {}) {
     if (!compact) items.push({ icon: '', label: `複製價格 ${fmt(price)}`, fn: () => { navigator.clipboard?.writeText(fmt(price)); toast('已複製', fmt(price), 'info'); } }, 'sep');
     items.push(
       { icon: 'alert', label: `在${fmt(price)}增加關於${sym}的快訊…`, key: 'Alt + A', fn: () => toast('示範版', '快訊尚未實作', 'info') },
-      { icon: 'sell', label: `賣出 ${tag} ${sym} @ ${fmt(price)} ${typeText(sellType)}`, key: 'Alt + Shift + S', fn: () => broker.placeOrder({ symbol: state.symbol, side: 'sell', type: sellType, qty: q, price, leverage: lev }) },
-      { icon: 'buy', label: `買入 ${tag} ${sym} @ ${fmt(price)} ${typeText(buyType)}`, key: 'Alt + Shift + B', fn: () => broker.placeOrder({ symbol: state.symbol, side: 'buy', type: buyType, qty: q, price, leverage: lev }) },
+      { icon: 'sell', label: `賣出 ${tag} ${sym} @ ${fmt(price)} ${typeText(sellType)}`, key: 'Alt + Shift + S', fn: () => broker.placeOrder({ symbol: state.symbol, side: 'sell', type: sellType, qty: q, price, leverage: lev, ...autoBracket('sell', price) }) },
+      { icon: 'buy', label: `買入 ${tag} ${sym} @ ${fmt(price)} ${typeText(buyType)}`, key: 'Alt + Shift + B', fn: () => broker.placeOrder({ symbol: state.symbol, side: 'buy', type: buyType, qty: q, price, leverage: lev, ...autoBracket('buy', price) }) },
       { icon: 'order', label: `在${sym}以${fmt(price)}新增訂單…`, key: 'Shift + T', fn: () => { ticket.side = price < ask ? 'buy' : 'sell'; ticket.type = ticket.side === 'buy' ? buyType : sellType; ticket.price = price; ticket.tp = ticket.sl = null; showView('viewOrder'); } },
       { icon: 'hline', label: `在${fmt(price)}繪製水平線`, key: 'Alt + H', fn: () => { drawings.list.push({ type: 'hline', color: BLUE, width: 1, p: [{ t: 0, price }] }); drawings._commit(); } },
     );
@@ -885,7 +916,7 @@ document.addEventListener('keydown', e => {
   const { bid, ask } = bidAsk();
   const side = k === 'b' ? 'buy' : 'sell';
   const type = side === 'buy' ? (plusPrice < ask ? 'limit' : 'stop') : (plusPrice > bid ? 'limit' : 'stop');
-  broker.placeOrder({ symbol: state.symbol, side, type, qty: qtyFor(plusPrice), price: plusPrice, leverage: state.trade.leverage });
+  broker.placeOrder({ symbol: state.symbol, side, type, qty: qtyFor(plusPrice), price: plusPrice, leverage: state.trade.leverage, ...autoBracket(side, plusPrice) });
 });
 plusBtn.addEventListener('mouseleave', () => { plusBtn.hidden = true; });
 plusBtn.addEventListener('click', e => {
