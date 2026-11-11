@@ -1,6 +1,6 @@
 // 技術指標：計算 + 在圖表上建立對應的 series
 import { LineSeries, HistogramSeries, LineStyle } from '../lib/lightweight-charts.standalone.production.mjs';
-import { detect3p1, detectSpur, SignalLayer } from './smc.js';
+import { detect3p1, detectSpur, sessionBoxes, SignalLayer } from './smc.js';
 
 function sma(values, n) {
   const out = new Array(values.length).fill(null);
@@ -66,14 +66,26 @@ export const INDICATORS = {
   // 幣聖課（ACDC_College）的邀請制指標：畫在主圖上的訊號圖層，不是線
   TP1: {
     name: '3+1指標 Lv1', short: 'ACDC_College', author: 'ACDC_College', inviteOnly: true, overlay: true, layer: '3p1',
-    params: { k: 2, maxGap: 60, rr: 1 }, lines: [],
+    params: { k: 2, maxGap: 60, slMode: 'struct', slPct: 1, tpMode: 'rr', rr: 1, tpPct: 2 }, lines: [],
+    structSlName: '訂單塊那根的另一端',
     detect: (bars, p) => detect3p1(bars, p),
     title: () => '3+1指標 Lv1',
   },
   SPUR: {
     name: '馬刺策略_BSC2026', short: 'ACDC_College', author: 'ACDC_College', inviteOnly: true, overlay: true, layer: 'spur',
-    params: { rr: 1 }, lines: [],
+    params: {
+      slMode: 'struct', slPct: 1, tpMode: 'rr', rr: 1, tpPct: 2,
+      // 交易時段框（本地時間；預設值是照使用者的 TradingView 截圖量的，可以在設定裡改）
+      showSessions: true,
+      ses1On: true, ses1From: '06:00', ses1To: '09:00', ses1Color: '#00bcd4',
+      ses2On: true, ses2From: '11:00', ses2To: '14:00', ses2Color: '#9c27b0',
+      ses3On: true, ses3From: '14:00', ses3To: '16:00', ses3Color: '#4caf50',
+      ses4On: true, ses4From: '23:00', ses4To: '03:00', ses4Color: '#ff9800',
+    },
+    lines: [],
+    structSlName: '操縱那根的尖端（馬刺）',
     detect: (bars, p) => detectSpur(bars, p),
+    boxes: (bars, p) => sessionBoxes(bars, p),
     title: () => '馬刺策略_BSC2026',
   },
   MA: {
@@ -211,7 +223,7 @@ export class IndicatorManager {
     const bars = this.getBars();
     if (ind.layer) {
       ind.signals = ind.def.detect(bars, ind.params);
-      ind.layer.set(ind.signals);
+      ind.layer.set(ind.signals, ind.def.boxes ? ind.def.boxes(bars, ind.params) : []);
       ind.lastCalc = performance.now();
       return;
     }
@@ -232,6 +244,15 @@ export class IndicatorManager {
   }
 
   recalcAll() { this.list.forEach(ind => this.recalc(ind)); }
+
+  // 指標設定視窗套用新參數
+  setParams(id, params) {
+    const ind = this.list.find(x => x.id === id);
+    if (!ind) return;
+    ind.params = { ...ind.params, ...params };
+    this.recalc(ind);
+    this.onChange();
+  }
 
   // 即時 tick：只更新最後一點
   updateLast() {

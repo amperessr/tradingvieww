@@ -87,12 +87,16 @@ function scan3p1Long(cs, { k = 2, maxGap = 60 } = {}) {
   return out;
 }
 
-// 進場＝訊號那根收盤；止損由各指標給；止盈＝rr 倍風險。往後逐根看先碰到止損還是止盈（同一根都碰到時當作先止損，保守）
-function tradeOf(bars, sig, dir, sl, rr) {
+// 進場＝訊號那根收盤。止損、止盈由玩家在指標設定裡選：
+//   止損 slMode：'struct' 結構點（馬刺＝操縱尖端、3+1＝訂單塊那根另一端）／'pct' 距離進場價 slPct%
+//   止盈 tpMode：'rr' 風險的 rr 倍／'pct' 距離進場價 tpPct%
+// 往後逐根看先碰到止損還是止盈（同一根都碰到時當作先止損，保守）
+function tradeOf(bars, sig, dir, structSl, p) {
   const entry = bars[sig].close;
+  const sl = p.slMode === 'pct' ? entry * (1 - (dir * (p.slPct ?? 1)) / 100) : structSl;
   const risk = Math.abs(entry - sl);
-  if (!(risk > 0)) return null;
-  const tp = entry + dir * rr * risk;
+  if (!(risk > 0) || (dir > 0 ? sl >= entry : sl <= entry)) return null;
+  const tp = p.tpMode === 'pct' ? entry * (1 + (dir * (p.tpPct ?? 2)) / 100) : entry + dir * (p.rr ?? 1) * risk;
   let hit = null;
   for (let i = sig + 1; i < bars.length; i++) {
     const b = bars[i];
@@ -109,11 +113,10 @@ export function detect3p1(bars, params = {}) {
     ...s, dir: -1, chLevel: -s.chLevel, bosLevel: -s.bosLevel,
     obZone: { lo: -s.obZone.hi, hi: -s.obZone.lo }, fvg: { at: s.fvg.at, lo: -s.fvg.hi, hi: -s.fvg.lo },
   }));
-  const rr = params.rr ?? 1;
-  // 3+1 的止損放在訂單塊那根的另一端（做多＝那根的低點、做空＝高點）
+  // 3+1 的結構止損：訂單塊那根的另一端（做多＝那根的低點、做空＝高點）
   return [...longs, ...shorts].sort((a, b) => a.retest - b.retest).map(s => {
     const ob = bars[s.ob];
-    const t = tradeOf(bars, s.retest, s.dir, s.dir > 0 ? ob.low : ob.high, rr);
+    const t = tradeOf(bars, s.retest, s.dir, s.dir > 0 ? ob.low : ob.high, params);
     return t ? { ...s, trade: t } : s;
   });
 }
@@ -190,14 +193,41 @@ function scanSpurLong(cs, { lens = [60, 48, 40, 32, 24, 18, 14, 10], maxWait = 6
   return out;
 }
 
+// 交易時段框：每天固定時段（本地時間，bar.time 已經換成本地時間）的最高～最低價畫成一個框。
+// 時段可以跨午夜（例如 23:00–03:00）。只用已經走出來的 K 棒，重播時框會跟著長大。
+const toMin = s => { const [h, m] = String(s || '0:0').split(':').map(Number); return ((h || 0) * 60 + (m || 0)) % 1440; };
+export function sessionBoxes(bars, params = {}) {
+  if (params.showSessions === false || bars.length < 2) return [];
+  const step = bars[1].time - bars[0].time;
+  if (step > 3600) return [];   // 4 小時以上的 K 線，時段框沒有意義
+  const out = [];
+  for (let n = 1; n <= 4; n++) {
+    if (!params[`ses${n}On`]) continue;
+    const from = toMin(params[`ses${n}From`]), to = toMin(params[`ses${n}To`]);
+    if (from === to) continue;
+    const color = params[`ses${n}Color`] || '#00bcd4';
+    let cur = null;
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i];
+      const m = Math.floor(b.time / 60) % 1440;
+      const inside = from < to ? m >= from && m < to : m >= from || m < to;
+      if (!inside) { cur = null; continue; }
+      // 跨午夜的時段，午夜後那段算前一天的
+      const day = Math.floor(b.time / 86400) - (from > to && m < to ? 1 : 0);
+      if (!cur || cur.day !== day) { cur = { day, a: i, b: i, hi: b.high, lo: b.low, color }; out.push(cur); }
+      else { cur.b = i; cur.hi = Math.max(cur.hi, b.high); cur.lo = Math.min(cur.lo, b.low); }
+    }
+  }
+  return out;
+}
+
 export function detectSpur(bars, params = {}) {
   const cs = bars.map(norm);
   const longs = scanSpurLong(cs, params).map(s => ({ ...s, dir: 1 }));
   const shorts = scanSpurLong(bars.map(flip), params).map(s => ({ ...s, dir: -1, R: -s.R, S: -s.S, tip: -s.tip }));
-  const rr = params.rr ?? 1;
-  // 馬刺的止損放在操縱那根的尖端（被掃掉的那根影線）
+  // 馬刺的結構止損：操縱那根的尖端（被掃掉的那根影線）
   return [...longs, ...shorts].sort((a, b) => a.bos - b.bos).map(s => {
-    const t = tradeOf(bars, s.bos, s.dir, s.tip, rr);
+    const t = tradeOf(bars, s.bos, s.dir, s.tip, params);
     return t ? { ...s, trade: t } : s;
   });
 }
@@ -290,7 +320,7 @@ export class SignalLayer {
   detached() { this.requestUpdate = null; }
   updateAllViews() {}
   paneViews() { return [this._view]; }
-  set(items) { this.items = items; this.requestUpdate?.(); }
+  set(items, boxes = []) { this.items = items; this.boxes = boxes; this.requestUpdate?.(); }
   setVisible(v) { this.visible = v; this.requestUpdate?.(); }
 
   _x(i) { return this.chart.timeScale().logicalToCoordinate(i); }
@@ -318,6 +348,19 @@ export class SignalLayer {
     if (!r) return;
     const bar = this.chart.timeScale().width() / Math.max(1, r.to - r.from);
     ctx.save();
+    // 交易時段框先畫，訊號和標籤蓋在上面
+    for (const bx of this.boxes || []) {
+      if (bx.b < r.from - 2 || bx.a > r.to + 2) continue;
+      const x1 = this._x(bx.a), x2 = this._x(bx.b), y1 = this._y(bx.hi), y2 = this._y(bx.lo);
+      if (x1 == null || x2 == null || y1 == null || y2 == null) continue;
+      const l = Math.round(x1 - bar / 2) + 0.5, w = Math.round(x2 - x1 + bar), t = Math.round(y1) + 0.5, h = Math.round(y2 - y1);
+      ctx.fillStyle = hexA(bx.color, 0.15);
+      ctx.fillRect(l, t, w, h);
+      ctx.strokeStyle = hexA(bx.color, 0.55);
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.strokeRect(l, t, w, h);
+    }
     for (const it of this.items) {
       const last = Math.max(this.kind === '3p1' ? it.retest : it.bos, it.trade?.hit?.at ?? 0) + 30;
       const first = this.kind === '3p1' ? it.chFrom : it.hiIdx;

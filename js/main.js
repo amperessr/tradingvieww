@@ -411,7 +411,7 @@ function indRow(id, name, hidden, pane = false) {
     <span class="lg-ind-name">${name}</span><span class="lg-ind-vals" ${id === 'vol' ? 'id="lgVol"' : `data-vals="${id}"`}></span>${EYE_OFF}
     <span class="lg-ind-acts">
       <button data-act="toggle" data-id="${id}" title="${hidden ? '顯示' : '隱藏'}"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M1.5 9S4.5 4 9 4s7.5 5 7.5 5-3 5-7.5 5-7.5-5-7.5-5Z"/><circle cx="9" cy="9" r="2" fill="none" stroke="currentColor"/></svg></button>
-      <button data-act="settings" data-id="${id}" title="設定" class="soon-ind"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M6.3 3.5h5.4L14.5 9l-2.8 5.5H6.3L3.5 9z"/><circle cx="9" cy="9" r="2" fill="none" stroke="currentColor"/></svg></button>
+      <button data-act="settings" data-id="${id}" title="設定"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M6.3 3.5h5.4L14.5 9l-2.8 5.5H6.3L3.5 9z"/><circle cx="9" cy="9" r="2" fill="none" stroke="currentColor"/></svg></button>
       <button data-act="remove" data-id="${id}" title="移除"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" d="M5 5l8 8M13 5l-8 8"/></svg></button>
     </span></div>`;
 }
@@ -470,7 +470,7 @@ wrap.addEventListener('click', e => {
   const btn = e.target.closest('.lg-ind-acts button');
   if (!btn) return;
   const id = btn.dataset.id, act = btn.dataset.act;
-  if (act === 'settings') { toast('示範版', '指標設定尚未實作', 'info'); return; }
+  if (act === 'settings') { if (id === 'vol') toast('成交量', '成交量沒有可調整的設定', 'info'); else openIndicatorSettings(+id); return; }
   if (id === 'vol') {
     if (act === 'remove') { state.volumeVisible = false; volumeSeries.applyOptions({ visible: false }); }
     else volumeSeries.applyOptions({ visible: !volumeSeries.options().visible });
@@ -483,6 +483,91 @@ $('#lgCollapse').onclick = () => {
   const c = $('#lgIndicators').classList.toggle('collapsed');
   $('#lgCollapse').classList.toggle('collapsed', c);
 };
+
+// 雙擊圖例上的指標名稱也能開設定（和 TradingView 一樣）
+wrap.addEventListener('dblclick', e => {
+  const row = e.target.closest('.lg-ind');
+  if (!row || row.dataset.id === 'vol') return;
+  e.stopPropagation();
+  openIndicatorSettings(+row.dataset.id);
+}, true);
+
+// ================= 指標設定視窗 =================
+const PARAM_LABELS = { length: '長度', mult: '標準差倍數', fast: '快線長度', slow: '慢線長度', signal: '訊號線長度', k: '擺動點敏感度（前後根數）', maxGap: '每一步最多等幾根' };
+function openIndicatorSettings(id) {
+  const ind = indicators.list.find(x => x.id === id);
+  if (!ind) return;
+  const p = ind.params, d = ind.def;
+  const num = (key, label, step = 1, unit = '') =>
+    `<label class="set-row"><span>${label}</span><span class="op-input"><input data-p="${key}" type="number" step="${step}" min="0" value="${p[key]}">${unit ? `<span class="op-unit">${unit}</span>` : ''}</span></label>`;
+  let body;
+  if (d.layer) {
+    body = `
+      <div class="set-sec">止損</div>
+      <label class="set-radio"><input type="radio" name="slMode" value="struct" ${p.slMode !== 'pct' ? 'checked' : ''}>結構點：${d.structSlName}</label>
+      <label class="set-radio"><input type="radio" name="slMode" value="pct" ${p.slMode === 'pct' ? 'checked' : ''}>距離進場價固定百分比</label>
+      ${num('slPct', '止損距離', 0.1, '%')}
+      <div class="set-sec">止盈</div>
+      <label class="set-radio"><input type="radio" name="tpMode" value="rr" ${p.tpMode !== 'pct' ? 'checked' : ''}>風險的倍數（盈虧比）</label>
+      ${num('rr', '盈虧比 1 :', 0.1, '倍')}
+      <label class="set-radio"><input type="radio" name="tpMode" value="pct" ${p.tpMode === 'pct' ? 'checked' : ''}>距離進場價固定百分比</label>
+      ${num('tpPct', '止盈距離', 0.1, '%')}
+      <div class="set-note">進場價＝訊號那根 K 棒的收盤價。止盈、止損哪個先碰到，就在那個價位畫 ✅（綠＝止盈、紅＝止損）。</div>
+      ${'k' in p ? `<div class="set-sec">偵測</div>${num('k', PARAM_LABELS.k)}${num('maxGap', PARAM_LABELS.maxGap)}` : ''}
+      ${'showSessions' in p ? `<div class="set-sec">交易時段框（${tzLabel}）</div>
+      <label class="set-radio"><input type="checkbox" data-p="showSessions" ${p.showSessions !== false ? 'checked' : ''}>顯示交易時段框（1 小時以下的 K 線才會畫）</label>
+      ${[1, 2, 3, 4].map(n => `<div class="set-ses">
+        <input type="checkbox" data-p="ses${n}On" ${p[`ses${n}On`] ? 'checked' : ''} title="顯示這個時段">
+        <span>時段 ${n}</span>
+        <input type="text" maxlength="5" placeholder="HH:MM" class="set-time" data-p="ses${n}From" value="${p[`ses${n}From`]}">
+        <span class="set-dash">–</span>
+        <input type="text" maxlength="5" placeholder="HH:MM" class="set-time" data-p="ses${n}To" value="${p[`ses${n}To`]}">
+        <input type="color" class="set-color" data-p="ses${n}Color" value="${p[`ses${n}Color`]}" title="顏色">
+      </div>`).join('')}` : ''}`;
+  } else {
+    body = Object.keys(d.params).map(k => num(k, PARAM_LABELS[k] || k, k === 'mult' ? 0.1 : 1)).join('');
+  }
+  openModal(`
+    <div class="ind-head"><span>${d.title(p)}</span><button class="md-close" title="關閉"><svg viewBox="0 0 18 18" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M3 3l12 12M15 3L3 15"/></svg></button></div>
+    <div class="set-tabs"><button class="set-tab on">輸入</button></div>
+    <div class="set-body">${body}</div>
+    <div class="set-foot"><button class="set-btn" id="setDefault">預設值</button><div class="tb-spacer"></div><button class="set-btn" id="setCancel">取消</button><button class="set-btn primary" id="setOk">確定</button></div>`, () => {
+    $('#modal').classList.add('modal-set');
+    const sync = () => {
+      const sl = $('#modal input[name="slMode"]:checked')?.value, tp = $('#modal input[name="tpMode"]:checked')?.value;
+      const dis = (key, off) => { const i = $(`#modal [data-p="${key}"]`); if (i) i.closest('.set-row').classList.toggle('off', off); };
+      if (sl) dis('slPct', sl !== 'pct');
+      if (tp) { dis('rr', tp !== 'rr'); dis('tpPct', tp !== 'pct'); }
+    };
+    $('#modal .set-body').addEventListener('change', sync);
+    sync();
+    $('#setCancel').onclick = closeModal;
+    $('#setDefault').onclick = () => {
+      for (const [k, v] of Object.entries(d.params)) {
+        const i = $(`#modal [data-p="${k}"]`);
+        if (i && i.type === 'checkbox') i.checked = !!v;
+        else if (i) i.value = v;
+        const r = $(`#modal input[name="${k}"][value="${v}"]`);
+        if (r) r.checked = true;
+      }
+      sync();
+    };
+    $('#setOk').onclick = () => {
+      const next = {};
+      $$('#modal [data-p]').forEach(i => {
+        const k = i.dataset.p;
+        if (i.type === 'checkbox') { next[k] = i.checked; return; }
+        if (i.classList.contains('set-time')) { const m = i.value.trim().match(/^(\d{1,2}):(\d{2})$/); if (m && +m[1] < 24 && +m[2] < 60) next[k] = `${m[1].padStart(2, '0')}:${m[2]}`; return; }
+        if (i.type === 'color') { if (i.value) next[k] = i.value; return; }
+        const v = parseFloat(i.value);
+        if (v > 0) next[k] = k === 'k' || k === 'maxGap' || !d.layer && k !== 'mult' ? Math.round(v) : v;
+      });
+      $$('#modal input[type=radio]:checked').forEach(r => { next[r.name] = r.value; });
+      indicators.setParams(id, next);
+      closeModal();
+    };
+  });
+}
 
 // ================= 報價更新 =================
 let quoteQueued = false;

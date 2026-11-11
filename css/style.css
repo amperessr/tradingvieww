@@ -713,3 +713,31 @@ body.recording .ps-plus { display: none !important; }
 .ind-item .ind-star { color: var(--text); font-size: 13px; }
 .ind-item .ind-lock { color: #22ab94; }
 .ind-item .ind-author { font-size: 14px; color: #5b8cff; }
+
+/* ===== 指標設定視窗（TradingView 樣式） ===== */
+.modal.modal-set { width: 460px; max-height: 80vh; }
+.set-tabs { display: flex; gap: 4px; padding: 0 20px; border-bottom: 1px solid var(--menu-sep); flex: none; }
+.set-tab { height: 36px; padding: 0 4px; margin-right: 16px; font-size: 14px; color: var(--menu-text); border-bottom: 2px solid transparent; }
+.set-tab.on { color: var(--text); border-bottom-color: var(--text); }
+.set-body { padding: 12px 20px 16px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.set-sec { font-size: 11px; color: var(--menu-sec); text-transform: uppercase; margin-top: 6px; }
+.set-row { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--menu-text); }
+.set-row > span:first-child { flex: 1; }
+.set-row .op-input { width: 150px; height: 34px; flex: none; }
+.set-row .op-input input { color: var(--text); }
+.set-row.off { opacity: .4; }
+.set-radio { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--menu-text); cursor: pointer; }
+.set-radio input { accent-color: var(--blue); width: 16px; height: 16px; margin: 0; }
+.set-note { font-size: 12px; color: var(--menu-sec); line-height: 1.6; }
+.set-foot { display: flex; align-items: center; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid var(--menu-sep); flex: none; }
+.set-btn { height: 34px; padding: 0 16px; border-radius: 6px; border: 1px solid #4a4a4a; font-size: 14px; color: var(--text); }
+.set-btn:hover { background: var(--menu-hover); }
+.set-btn.primary { background: #f2f2f2; border-color: #f2f2f2; color: #0f0f0f; }
+.set-btn.primary:hover { background: #fff; }
+.set-radio input[type=checkbox], .set-ses input[type=checkbox] { accent-color: var(--blue); width: 16px; height: 16px; margin: 0; }
+.set-ses { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--menu-text); }
+.set-ses > span:nth-child(2) { width: 52px; }
+.set-time { width: 80px; text-align: center; height: 34px; padding: 0 8px; border: 1px solid #4a4a4a; border-radius: 6px; background: transparent; color: var(--text); font: inherit; color-scheme: dark; }
+.set-time:focus { border-color: var(--blue); outline: none; }
+.set-dash { color: var(--menu-sec); }
+.set-color { width: 34px; height: 34px; padding: 2px; border: 1px solid #4a4a4a; border-radius: 6px; background: transparent; cursor: pointer; }
