@@ -66,13 +66,13 @@ export const INDICATORS = {
   // 幣聖課（ACDC_College）的邀請制指標：畫在主圖上的訊號圖層，不是線
   TP1: {
     name: '3+1指標 Lv1', short: 'ACDC_College', author: 'ACDC_College', inviteOnly: true, overlay: true, layer: '3p1',
-    params: { k: 2, maxGap: 60 }, lines: [],
+    params: { k: 2, maxGap: 60, rr: 1 }, lines: [],
     detect: (bars, p) => detect3p1(bars, p),
     title: () => '3+1指標 Lv1',
   },
   SPUR: {
     name: '馬刺策略_BSC2026', short: 'ACDC_College', author: 'ACDC_College', inviteOnly: true, overlay: true, layer: 'spur',
-    params: {}, lines: [],
+    params: { rr: 1 }, lines: [],
     detect: (bars, p) => detectSpur(bars, p),
     title: () => '馬刺策略_BSC2026',
   },
@@ -159,6 +159,7 @@ export class IndicatorManager {
     if (def.layer) {
       ind.layer = new SignalLayer(this.chart, def.layer);
       ind.layer.bars = this.getBars;
+      ind.layer.precision = this.getPrecision;
       this.getMainSeries().attachPrimitive(ind.layer);
       this.list.push(ind);
       this.recalc(ind);

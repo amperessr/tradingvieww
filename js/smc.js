@@ -87,6 +87,21 @@ function scan3p1Long(cs, { k = 2, maxGap = 60 } = {}) {
   return out;
 }
 
+// 進場＝訊號那根收盤；止損由各指標給；止盈＝rr 倍風險。往後逐根看先碰到止損還是止盈（同一根都碰到時當作先止損，保守）
+function tradeOf(bars, sig, dir, sl, rr) {
+  const entry = bars[sig].close;
+  const risk = Math.abs(entry - sl);
+  if (!(risk > 0)) return null;
+  const tp = entry + dir * rr * risk;
+  let hit = null;
+  for (let i = sig + 1; i < bars.length; i++) {
+    const b = bars[i];
+    if (dir > 0 ? b.low <= sl : b.high >= sl) { hit = { kind: 'sl', at: i, price: sl }; break; }
+    if (dir > 0 ? b.high >= tp : b.low <= tp) { hit = { kind: 'tp', at: i, price: tp }; break; }
+  }
+  return { sig, entry, sl, tp, hit };
+}
+
 export function detect3p1(bars, params = {}) {
   const cs = bars.map(norm);
   const longs = scan3p1Long(cs, params).map(s => ({ ...s, dir: 1 }));
@@ -94,7 +109,13 @@ export function detect3p1(bars, params = {}) {
     ...s, dir: -1, chLevel: -s.chLevel, bosLevel: -s.bosLevel,
     obZone: { lo: -s.obZone.hi, hi: -s.obZone.lo }, fvg: { at: s.fvg.at, lo: -s.fvg.hi, hi: -s.fvg.lo },
   }));
-  return [...longs, ...shorts].sort((a, b) => a.retest - b.retest);
+  const rr = params.rr ?? 1;
+  // 3+1 的止損放在訂單塊那根的另一端（做多＝那根的低點、做空＝高點）
+  return [...longs, ...shorts].sort((a, b) => a.retest - b.retest).map(s => {
+    const ob = bars[s.ob];
+    const t = tradeOf(bars, s.retest, s.dir, s.dir > 0 ? ob.low : ob.high, rr);
+    return t ? { ...s, trade: t } : s;
+  });
 }
 
 // =====================================================================
@@ -173,7 +194,12 @@ export function detectSpur(bars, params = {}) {
   const cs = bars.map(norm);
   const longs = scanSpurLong(cs, params).map(s => ({ ...s, dir: 1 }));
   const shorts = scanSpurLong(bars.map(flip), params).map(s => ({ ...s, dir: -1, R: -s.R, S: -s.S, tip: -s.tip }));
-  return [...longs, ...shorts].sort((a, b) => a.bos - b.bos);
+  const rr = params.rr ?? 1;
+  // 馬刺的止損放在操縱那根的尖端（被掃掉的那根影線）
+  return [...longs, ...shorts].sort((a, b) => a.bos - b.bos).map(s => {
+    const t = tradeOf(bars, s.bos, s.dir, s.tip, rr);
+    return t ? { ...s, trade: t } : s;
+  });
 }
 
 // =====================================================================
@@ -181,6 +207,12 @@ export function detectSpur(bars, params = {}) {
 // =====================================================================
 const FONT = '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, "Microsoft JhengHei", sans-serif';
 const LONG_C = '#089981', SHORT_C = '#f23645', FVG_C = '#2962ff';
+// 原版指標的配色（從使用者的 TradingView 截圖量的）
+const PILL_LONG = '#4caf50', PILL_SHORT = '#f23645';
+const ENTRY_LINE = '#1d9ec2', ENTRY_TAG = '#165769';
+const SL_LINE = '#d66b61', SL_TAG = '#864640';
+const WIN_LINE = '#77a477', WIN_TAG = '#435a43', LOSS_LINE = '#d66b61', LOSS_TAG = '#6f3b34';
+const TAG_LEN = 150;   // 進場／止損／結果線往右畫多長（px）
 
 function hexA(hex, a) {
   const n = parseInt(hex.slice(1, 7), 16);
@@ -188,12 +220,12 @@ function hexA(hex, a) {
 }
 
 function pill(ctx, x, y, text, bg, below) {
-  ctx.font = `600 11px ${FONT}`;
-  const w = ctx.measureText(text).width + 12, h = 18;
-  const top = below ? y + 8 : y - 8 - h;
+  ctx.font = `600 12px ${FONT}`;
+  const w = ctx.measureText(text).width + 16, h = 22;
+  const top = below ? y + 9 : y - 9 - h;
   ctx.fillStyle = bg;
   ctx.beginPath();
-  ctx.roundRect(x - w / 2, top, w, h, 3);
+  ctx.roundRect(x - w / 2, top, w, h, 4);
   ctx.fill();
   // 小三角指向那根 K 棒
   ctx.beginPath();
@@ -204,6 +236,29 @@ function pill(ctx, x, y, text, bg, below) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, top + h / 2 + 0.5);
+}
+
+function tagLine(ctx, x1, y, lineColor, tagBg, text, emoji = false) {
+  const x2 = x1 + TAG_LEN;
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(x1, Math.round(y) + 0.5); ctx.lineTo(x2, Math.round(y) + 0.5); ctx.stroke();
+  ctx.font = emoji ? `13px "Segoe UI Emoji", "Apple Color Emoji", ${FONT}` : `600 13px ${FONT}`;
+  const w = ctx.measureText(text).width + (emoji ? 14 : 18), h = 24, n = 8;
+  ctx.fillStyle = tagBg;
+  ctx.beginPath();
+  ctx.moveTo(x2, y);
+  ctx.lineTo(x2 + n, y - h / 2);
+  ctx.arcTo(x2 + n + w, y - h / 2, x2 + n + w, y + h / 2, 3);
+  ctx.arcTo(x2 + n + w, y + h / 2, x2 + n, y + h / 2, 3);
+  ctx.lineTo(x2 + n, y + h / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x2 + n + (emoji ? 7 : 9), y + 0.5);
 }
 
 function levelLine(ctx, x1, x2, y, color, label, above) {
@@ -239,6 +294,22 @@ export class SignalLayer {
   setVisible(v) { this.visible = v; this.requestUpdate?.(); }
 
   _x(i) { return this.chart.timeScale().logicalToCoordinate(i); }
+
+  _fmt(p) { return (+p).toFixed(this.precision?.() ?? 2); }
+
+  // 進場線（open:／進場:）、止損（SL:，被打到時改成結果線）、結果（✅，綠＝止盈、紅＝止損）
+  _drawTrade(ctx, t, entryWord) {
+    const x = this._x(t.sig);
+    if (x == null) return;
+    const ye = this._y(t.entry), ys = this._y(t.sl);
+    if (t.hit) {
+      const yh = this._y(t.hit.price);
+      const win = t.hit.kind === 'tp';
+      if (yh != null) tagLine(ctx, x, yh, win ? WIN_LINE : LOSS_LINE, win ? WIN_TAG : LOSS_TAG, '✅', true);
+    }
+    if (!(t.hit && t.hit.kind === 'sl') && ys != null) tagLine(ctx, x, ys, SL_LINE, SL_TAG, `SL: ${this._fmt(t.sl)}`);
+    if (ye != null) tagLine(ctx, x, ye, ENTRY_LINE, ENTRY_TAG, `${entryWord}: ${this._fmt(t.entry)}`);
+  }
   _y(p) { return this.series.priceToCoordinate(p); }
 
   _draw(ctx) {
@@ -248,7 +319,7 @@ export class SignalLayer {
     const bar = this.chart.timeScale().width() / Math.max(1, r.to - r.from);
     ctx.save();
     for (const it of this.items) {
-      const last = this.kind === '3p1' ? it.retest : it.bos;
+      const last = Math.max(this.kind === '3p1' ? it.retest : it.bos, it.trade?.hit?.at ?? 0) + 30;
       const first = this.kind === '3p1' ? it.chFrom : it.hiIdx;
       if (last < r.from - 5 || first > r.to + 5) continue;
       if (this.kind === '3p1') this._draw3p1(ctx, it, bar);
@@ -260,6 +331,13 @@ export class SignalLayer {
   _draw3p1(ctx, s, bar) {
     const long = s.dir > 0, col = long ? LONG_C : SHORT_C;
     const X = i => this._x(i), Y = p => this._y(p);
+    if (!this.showStructure) {
+      if (s.trade) this._drawTrade(ctx, s.trade, '進場');
+      const k0 = this.bars?.()?.[s.retest];
+      const y0 = k0 && Y(long ? k0.low : k0.high);
+      if (y0 != null) pill(ctx, X(s.retest), y0, long ? '3+1做多' : '3+1做空', long ? PILL_LONG : PILL_SHORT, long);
+      return;
+    }
     const xEnd = X(s.retest) + bar * 2;
     // 訂單塊（實心淡色）
     const oy1 = Y(s.obZone.hi), oy2 = Y(s.obZone.lo), ox = X(s.ob) - bar / 2;
@@ -313,8 +391,10 @@ export class SignalLayer {
     // BOS 線：從箱頂那根畫到站上箱頂那根
     const ry = Y(s.R);
     if (ry != null) levelLine(ctx, X(s.hiIdx), X(s.bos) + bar, ry, col, 'BOS', long);
-    // 訊號標在操縱那根的尖端（BOS 成立才會被掃到，所以不會提前出現）
-    const ty = Y(s.tip);
-    if (ty != null) pill(ctx, X(s.m), ty, long ? '馬刺做多' : '馬刺做空', col, long);
+    if (s.trade) this._drawTrade(ctx, s.trade, 'open');
+    // 訊號標在 BOS 成立的那根（和 TradingView 原版一樣：做多在那根下方、做空在上方）
+    const kb = this.bars?.()?.[s.bos];
+    const ty = kb && Y(long ? kb.low : kb.high);
+    if (ty != null) pill(ctx, X(s.bos), ty, long ? '馬刺做多' : '馬刺做空', long ? PILL_LONG : PILL_SHORT, long);
   }
 }
